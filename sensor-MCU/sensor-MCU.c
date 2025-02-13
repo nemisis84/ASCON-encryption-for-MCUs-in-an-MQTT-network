@@ -1,11 +1,13 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "ascon.h"
+#include "crypto_aead.h"
+
 
 // Uncomment the desired encryption method
 // #define USE_ASCON_AEAD // Uses ascon_aead_encrypt / ascon_aead_decrypt
-// #define USE_CRYPTO_AEAD // Uses crypto_aead_encrypt / crypto_aead_decrypt
-#define USE_ASCON_DECRYPT // Uses ascon_decrypt / ascon_decrypt
+#define USE_CRYPTO_AEAD // Uses crypto_aead_encrypt / crypto_aead_decrypt
+// #define USE_PROTECTED_BI32_ARMV6_LEVELED
 
 
 void print_hex(const char *label, const uint8_t *data, size_t len) {
@@ -89,48 +91,58 @@ int main() {
     printf("Decrypted message: %s\n", decrypted);
 #endif
 
-#ifdef USE_ASCON_DECRYPT
-    printf("Using ascon_encrypt()...\n");
+// #ifdef USE_PROTECTED_BI32_ARMV6_LEVELED
+//     printf("Using protected_bi32_armv6_leveled()...\n");
 
-    // Define ASCON state
-    ascon_state_t state;
+//     ascon_state_t state;
+//     mask_key_uint32_t masked_key;
+//     mask_npub_uint32_t masked_nonce;
+//     mask_m_uint32_t masked_plaintext;
+//     mask_c_uint32_t masked_ciphertext;
 
-    // Convert uint8_t plaintext to masked_m_uint32_t format
-    mask_m_uint32_t masked_plaintext[plaintext_len];
-    for (uint64_t i = 0; i < plaintext_len; i++) {
-        masked_plaintext[i].shares[0] = plaintext[i];  // Assign first share
-    }
+//     generate_shares_encrypt(plaintext, &masked_plaintext, plaintext_len,
+//                             associated_data, NULL, ad_len,
+//                             nonce, &masked_nonce, key, &masked_key);
 
-    // Masked ciphertext output
-    mask_c_uint32_t masked_ciphertext[plaintext_len];
+//     ascon_initaead(&state, &masked_key, &masked_nonce);
+//     ascon_adata(&state, NULL, ad_len);
+//     ascon_encrypt(&state, &masked_ciphertext, &masked_plaintext, plaintext_len);
+//     ascon_final(&state, &masked_key);
+//     ascon_settag(&state, (mask_c_uint32_t*)tag);
 
-    // Encrypt
-    ascon_encrypt(&state, masked_ciphertext, masked_plaintext, plaintext_len);
+//     combine_shares_encrypt(&masked_ciphertext, ciphertext, plaintext_len + CRYPTO_ABYTES);
 
-    // Convert masked ciphertext to uint8_t array
-    for (uint64_t i = 0; i < plaintext_len; i++) {
-        ciphertext[i] = (uint8_t) masked_ciphertext[i].shares[0];  // Extract first share
-    }
+//     print_hex("Ciphertext", ciphertext, plaintext_len);
+//     print_hex("Tag", tag, CRYPTO_ABYTES);
 
-    print_hex("Ciphertext", ciphertext, plaintext_len);
+//     // Decryption
+//     printf("Decrypting...\n");
+//     mask_m_uint32_t masked_decrypted;
+//     ascon_state_t state_dec;
 
-    // Decryption
-    printf("Decrypting...\n");
+//     generate_shares_decrypt(ciphertext, &masked_ciphertext, ciphertext_len,
+//                             associated_data, NULL, ad_len,
+//                             nonce, &masked_nonce, key, &masked_key);
 
-    // Masked decryption output
-    mask_m_uint32_t masked_decrypted[plaintext_len];
+//     ascon_initaead(&state_dec, &masked_key, &masked_nonce);
+//     ascon_adata(&state_dec, NULL, ad_len);
+//     ascon_decrypt(&state_dec, &masked_decrypted, &masked_ciphertext, plaintext_len);
+//     ascon_final(&state_dec, &masked_key);
+//     ascon_xortag(&state_dec, (mask_c_uint32_t*)tag);
 
-    ascon_decrypt(&state, masked_decrypted, masked_ciphertext, plaintext_len);
+//     int auth_success = ascon_iszero(&state_dec);
+//     uint8_t decrypted[plaintext_len];
+//     combine_shares_decrypt(&masked_decrypted, decrypted, plaintext_len);
 
-    // Convert decrypted data back to normal plaintext array
-    uint8_t decrypted[plaintext_len];
-    for (uint64_t i = 0; i < plaintext_len; i++) {
-        decrypted[i] = (uint8_t) masked_decrypted[i].shares[0];  // Extract first share
-    }
+//     if (auth_success == 0) {
+//         printf("Decryption successful!\n");
+//         printf("Decrypted message: %s\n", decrypted);
+//     } else {
+//         printf("Decryption failed: Authentication mismatch!\n");
+//         return 1;
+//     }
 
-    printf("Decrypted message: %s\n", decrypted);
-#endif
+// #endif
 
-
-    return 0;
+//     return 0;
 }
