@@ -14,6 +14,22 @@ This guide is based on https://datasheets.raspberrypi.com/pico/getting-started-w
 6. Open file explorer or use the command line and find the .uf2 file in the /build folder. Copy the .uf2 file to the Raspberry Pi. This will flash and boot the Pico.
 7. The program will now run whenever the device is powered. Press BOOTSEL and plug the USB to your laptop to replace the program. 
 
+
+#### Command line
+```
+export PICO_SDK_PATH=$(pwd)/pico-sdk
+```
+
+
+```
+rm -rf build/*
+cd build
+cmake ..
+make -j$(nproc)
+```
+
+
+
 ### Debugging
 
 The easiest way to debug the Pico is to send print statements back to the computer. https://datasheets.raspberrypi.com/pico/getting-started-with-pico.pdf also explains how a debug probe can be used. However, This guide only concerns debugging with printf().
