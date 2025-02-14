@@ -12,20 +12,20 @@ project(sensor-MCU C CXX ASM)
 # Set Pico board
 set(PICO_BOARD pico_w CACHE STRING "Board type")
 
+# Add ASCON library path
+set(ASCON_PATH ${CMAKE_CURRENT_LIST_DIR}/libs/ascon-suite/src/ascon)
+# set(ASCON_PATH ${CMAKE_CURRENT_LIST_DIR}/libs/ascon/armv6m)
+# set(ASCON_PATH ${CMAKE_CURRENT_LIST_DIR}/libs/ascon/armv6m_lowsize)
+# set(ASCON_PATH ${CMAKE_CURRENT_LIST_DIR}/libs/ascon/bi32_armv6m)
+# set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -g -D PICO_DEBUG=1")
+# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g -D PICO_DEBUG=1")
+
+
 # Compiler flags for ARMv6-M compatibility (Cortex-M0+)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mcpu=cortex-m0 -mthumb -mfloat-abi=soft -ffixed-r8 -ffixed-r9 -ffixed-r10 -ffixed-r11 -ffixed-r12 -Os -g -D PICO_DEBUG=1")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mcpu=cortex-m0 -mthumb -mfloat-abi=soft -ffixed-r8 -ffixed-r9 -ffixed-r10 -ffixed-r11 -ffixed-r12 -Os -g -D PICO_DEBUG=1")
 
-# Enable Pico SDK
-pico_sdk_init()
-
-# Add ASCON library path
-# set(ASCON_PATH ${CMAKE_CURRENT_LIST_DIR}/libs/ascon/armv6m)
-# set(ASCON_PATH ${CMAKE_CURRENT_LIST_DIR}/libs/ascon/armv6m_lowsize)
-# set(ASCON_PATH ${CMAKE_CURRENT_LIST_DIR}/libs/ascon/bi32_armv6m)
-set(ASCON_PATH ${CMAKE_CURRENT_LIST_DIR}/libs/ascon/protected_bi32_armv6m_leveled)
-
-# Add executable
+# Add ASCON library path (Masked AEAD version)
 file(GLOB ASCON_SOURCES ${ASCON_PATH}/*.c)
 
 add_executable(sensor-MCU 
