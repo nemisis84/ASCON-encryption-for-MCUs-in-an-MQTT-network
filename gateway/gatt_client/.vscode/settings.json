@@ -1,0 +1,14 @@
+{
+    "C_Cpp.intelliSenseEngine": "default",
+    "idf.espIdfPath": "/home/nemisis84/esp/v5.4/esp-idf",
+    "idf.toolsPath": "/home/nemisis84/.espressif",
+    "idf.pythonInstallPath": "/home/nemisis84/.pyenv/shims/python",
+    "idf.customExtraVars": {
+        "IDF_TARGET": "esp32c3"
+    },
+    "idf.openOcdConfigs": [
+        "board/esp32c3-builtin.cfg"
+    ],
+    "idf.flashType": "UART",
+    "idf.port": "/dev/ttyS0"
+}
