@@ -2,7 +2,7 @@
 Source code for TTM4905 Master thesis spring 2025. The project implements end-to-end encryption for MCUs in an MQTT 5.0 network. The encryption is done using the NIST LWC winner ASCON, which provides AEAD. 
 
 
-### Install guide
+## Install guide sensor-MCU
 
 This guide is based on https://datasheets.raspberrypi.com/pico/getting-started-with-pico.pdf getting started guide with VS code. 
 
@@ -41,3 +41,10 @@ The easiest way to debug the Pico is to send print statements back to the comput
 4. Look for Seriel USB-device (COMX).
 5. Dowload a program that can print serial output such as the ARDUINO IDE.
 6. Select the correct COMX output and open the serial monitor. 
+
+## Install guide gateway
+
+Install packages needed
+```
+sudo apt-get install git wget flex bison gperf python3 python3-pip python3-venv cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0
+```
