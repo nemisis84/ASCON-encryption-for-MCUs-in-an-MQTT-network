@@ -1,0 +1,19 @@
+cmake_minimum_required(VERSION 3.16)
+
+# Set project name
+project(gateway_project)
+
+# Include ESP-IDF build system
+include($ENV{IDF_PATH}/tools/cmake/project.cmake)
+
+# Add subdirectories for BLE, Wi-Fi, and MQTT
+add_subdirectory(gatt_client)
+add_subdirectory(wifi_enterprise)
+add_subdirectory(mqtt5)
+
+# Define the main source file (main.c) in the root directory
+idf_component_register(
+    SRCS "main.c"
+    INCLUDE_DIRS "."
+    REQUIRES gatt_client wifi_enterprise mqtt5
+)
