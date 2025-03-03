@@ -100,8 +100,8 @@ int att_write_callback(hci_con_handle_t connection_handle, uint16_t att_handle, 
         printf("⚠️  Unexpected ATT Handle: 0x%X\n", att_handle);
         return 0;
     }
-    // le_notification_enabled = little_endian_read_16(buffer, 0) == GATT_CLIENT_CHARACTERISTICS_CONFIGURATION_NOTIFICATION;
-    le_notification_enabled = little_endian_read_16(buffer, 0) == 0x0003;
+    le_notification_enabled = little_endian_read_16(buffer, 0) == GATT_CLIENT_CHARACTERISTICS_CONFIGURATION_NOTIFICATION;
+    // le_notification_enabled = little_endian_read_16(buffer, 0) == 0x0003;
     printf(" little_endian_read_16(buffer, 0) %d\n", little_endian_read_16(buffer, 0));
     printf("GATT_CLIENT_CHARACTERISTICS_CONFIGURATION_NOTIFICATION %d\n", GATT_CLIENT_CHARACTERISTICS_CONFIGURATION_NOTIFICATION);
     con_handle = connection_handle;
