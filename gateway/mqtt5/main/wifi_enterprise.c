@@ -40,14 +40,14 @@
 static EventGroupHandle_t wifi_event_group;
 
 /* esp netif object representing the WIFI station */
-static esp_netif_t *sta_netif = NULL;
+esp_netif_t *sta_netif = NULL;
 
 /* The event group allows multiple bits for each event,
    but we only care about one event - are we connected
    to the AP with an IP? */
 const int CONNECTED_BIT = BIT0;
 
-static const char *TAG = "example";
+static const char *TAG = "WiFi_ENTERPRISE";
 
 /* CA cert, taken from ca.pem
    Client cert, taken from client.crt
@@ -98,6 +98,7 @@ static void event_handler(void* arg, esp_event_base_t event_base,
 
 void initialise_wifi(void)
 {
+ESP_ERROR_CHECK(nvs_flash_init());
 #ifdef SERVER_CERT_VALIDATION_ENABLED
     unsigned int ca_pem_bytes = ca_pem_end - ca_pem_start;
 #endif /* SERVER_CERT_VALIDATION_ENABLED */
@@ -161,16 +162,16 @@ void initialise_wifi(void)
 #endif
     ESP_ERROR_CHECK(esp_wifi_sta_enterprise_enable());
     ESP_ERROR_CHECK(esp_wifi_start());
+
+    
 }
 
-static void wifi_enterprise_example_task(void *pvParameters)
+void wifi_get_IPs_task(void *pvParameters)
 {
     esp_netif_ip_info_t ip;
     memset(&ip, 0, sizeof(esp_netif_ip_info_t));
-    vTaskDelay(2000 / portTICK_PERIOD_MS);
 
     while (1) {
-        vTaskDelay(2000 / portTICK_PERIOD_MS);
 
         if (esp_netif_get_ip_info(sta_netif, &ip) == 0) {
             ESP_LOGI(TAG, "~~~~~~~~~~~");
@@ -178,13 +179,21 @@ static void wifi_enterprise_example_task(void *pvParameters)
             ESP_LOGI(TAG, "MASK:"IPSTR, IP2STR(&ip.netmask));
             ESP_LOGI(TAG, "GW:"IPSTR, IP2STR(&ip.gw));
             ESP_LOGI(TAG, "~~~~~~~~~~~");
+            break;
         }
+        else {
+            ESP_LOGI(TAG, "Waiting for IP ...");
+            vTaskDelay(200 / portTICK_PERIOD_MS);
+        }
+
     }
+    vTaskDelete(NULL);
+
 }
 
 // void app_main(void)
 // {
-//     ESP_ERROR_CHECK(nvs_flash_init());
+    // ESP_ERROR_CHECK(nvs_flash_init());
 //     initialise_wifi();
-//     xTaskCreate(&wifi_enterprise_example_task, "wifi_enterprise_example_task", 4096, NULL, 5, NULL);
+//     xTaskCreate(&wifi_get_IPs_task, "wifi_get_IPs_task", 4096, NULL, 5, NULL);
 // }

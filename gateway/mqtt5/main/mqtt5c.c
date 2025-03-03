@@ -131,12 +131,12 @@ void mqtt5_event_handler(void *handler_args, esp_event_base_t base, int32_t even
         subscribe1_property.user_property = NULL;
         ESP_LOGI(TAG, "sent subscribe successful, msg_id=%d", msg_id);
 
-        esp_mqtt5_client_set_user_property(&unsubscribe_property.user_property, user_property_arr, USE_PROPERTY_ARR_SIZE);
-        esp_mqtt5_client_set_unsubscribe_property(client, &unsubscribe_property);
-        msg_id = esp_mqtt_client_unsubscribe(client, "/topic/qos0");
-        ESP_LOGI(TAG, "sent unsubscribe successful, msg_id=%d", msg_id);
-        esp_mqtt5_client_delete_user_property(unsubscribe_property.user_property);
-        unsubscribe_property.user_property = NULL;
+        // esp_mqtt5_client_set_user_property(&unsubscribe_property.user_property, user_property_arr, USE_PROPERTY_ARR_SIZE);
+        // esp_mqtt5_client_set_unsubscribe_property(client, &unsubscribe_property);
+        // msg_id = esp_mqtt_client_unsubscribe(client, "/topic/qos0");
+        // ESP_LOGI(TAG, "sent unsubscribe successful, msg_id=%d", msg_id);
+        // esp_mqtt5_client_delete_user_property(unsubscribe_property.user_property);
+        // unsubscribe_property.user_property = NULL;
         break;
     case MQTT_EVENT_DISCONNECTED:
         ESP_LOGI(TAG, "MQTT_EVENT_DISCONNECTED");
@@ -155,8 +155,8 @@ void mqtt5_event_handler(void *handler_args, esp_event_base_t base, int32_t even
         esp_mqtt5_client_set_user_property(&disconnect_property.user_property, user_property_arr, USE_PROPERTY_ARR_SIZE);
         esp_mqtt5_client_set_disconnect_property(client, &disconnect_property);
         esp_mqtt5_client_delete_user_property(disconnect_property.user_property);
-        disconnect_property.user_property = NULL;
-        esp_mqtt_client_disconnect(client);
+        // disconnect_property.user_property = NULL;
+        // esp_mqtt_client_disconnect(client);
         break;
     case MQTT_EVENT_PUBLISHED:
         ESP_LOGI(TAG, "MQTT_EVENT_PUBLISHED, msg_id=%d", event->msg_id);
@@ -189,10 +189,22 @@ void mqtt5_event_handler(void *handler_args, esp_event_base_t base, int32_t even
     }
 }
 
+void mqtt_publish(const char *topic, const char *data) {
+    esp_mqtt_client_handle_t client = esp_mqtt_client_init(NULL); // Ensure correct client reference
+    if (client == NULL) {
+        ESP_LOGE(TAG, "MQTT client not initialized.");
+        return;
+    }
+
+    int msg_id = esp_mqtt_client_publish(client, topic, data, 0, 1, 0);
+    ESP_LOGI(TAG, "Published message to %s: %s (msg_id=%d)", topic, data, msg_id);
+}
+
+
 void mqtt5_app_start(void)
 {
     esp_mqtt5_connection_property_config_t connect_property = {
-        .session_expiry_interval = 10,
+        .session_expiry_interval = 60,
         .maximum_packet_size = 1024,
         .receive_maximum = 65535,
         .topic_alias_maximum = 2,
@@ -209,40 +221,17 @@ void mqtt5_app_start(void)
     esp_mqtt_client_config_t mqtt5_cfg = {
         .broker.address.uri = CONFIG_BROKER_URL,
         .session.protocol_ver = MQTT_PROTOCOL_V_5,
-        .network.disable_auto_reconnect = true,
-        .credentials.username = "123",
-        .credentials.authentication.password = "456",
+        .network.disable_auto_reconnect = false,
+        // .credentials.username = "123",
+        // .credentials.authentication.password = "456",
         .session.last_will.topic = "/topic/will",
         .session.last_will.msg = "i will leave",
         .session.last_will.msg_len = 12,
-        .session.last_will.qos = 1,
+        .session.last_will.qos = 2,
         .session.last_will.retain = true,
+        .session.keepalive = 60
     };
 
-#if CONFIG_BROKER_URL_FROM_STDIN
-    char line[128];
-
-    if (strcmp(mqtt5_cfg.uri, "FROM_STDIN") == 0) {
-        int count = 0;
-        printf("Please enter url of mqtt broker\n");
-        while (count < 128) {
-            int c = fgetc(stdin);
-            if (c == '\n') {
-                line[count] = '\0';
-                break;
-            } else if (c > 0 && c < 127) {
-                line[count] = c;
-                ++count;
-            }
-            vTaskDelay(10 / portTICK_PERIOD_MS);
-        }
-        mqtt5_cfg.broker.address.uri = line;
-        printf("Broker url: %s\n", line);
-    } else {
-        ESP_LOGE(TAG, "Configuration mismatch: wrong broker url");
-        abort();
-    }
-#endif /* CONFIG_BROKER_URL_FROM_STDIN */
 
     esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt5_cfg);
 
