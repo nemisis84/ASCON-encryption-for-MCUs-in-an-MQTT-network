@@ -4,7 +4,13 @@
     "idf.toolsPathWin": "C:\\Users\\super\\.espressif",
     "idf.pythonInstallPath": "C:\\Users\\super\\.espressif\\tools\\idf-python\\3.11.2\\python.exe",
     "files.associations": {
-        "gatt_client.h": "c"
+        "gatt_client.h": "c",
+        "mqtt5c.h": "c",
+        "freertos.h": "c",
+        "wifi_enterprise.h": "c",
+        "esp_mac.h": "c",
+        "esp_netif.h": "c",
+        "task.h": "c"
     },
     "idf.flashType": "UART",
     "idf.portWin": "COM7",

@@ -6,5 +6,8 @@
         "board/esp32c3-ftdi.cfg"
     ],
     "idf.portWin": "COM7",
-    "idf.toolsPathWin": "C:\\Users\\super\\.espressif"
+    "idf.toolsPathWin": "C:\\Users\\super\\.espressif",
+    "idf.customExtraVars": {
+        "IDF_TARGET": "esp32c3"
+    }
 }
