@@ -10,7 +10,7 @@
  * This function establishes an MQTT connection with the broker,
  * handles subscriptions, and allows publishing messages.
  */
-void mqtt5_app_start(void);
+void mqtt5_app_start(void *pvParameters);
 
 /**
  * @brief Publishes data to an MQTT topic.
