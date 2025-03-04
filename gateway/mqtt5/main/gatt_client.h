@@ -9,7 +9,7 @@
  * This function starts BLE scanning and attempts to connect to
  * the target BLE peripheral device.
  */
-void ble_init(void);
+void ble_init(void *pvParameters);
 
 /**
  * @brief BLE event handler for scanning and connection updates.

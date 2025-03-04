@@ -19,6 +19,8 @@
 
 static const char *TAG = "mqtt5_example";
 
+static esp_mqtt_client_handle_t client = NULL;
+
 static void log_error_if_nonzero(const char *message, int error_code)
 {
     if (error_code != 0) {
@@ -102,7 +104,6 @@ void mqtt5_event_handler(void *handler_args, esp_event_base_t base, int32_t even
 {
     ESP_LOGD(TAG, "Event dispatched from event loop base=%s, event_id=%" PRIi32, base, event_id);
     esp_mqtt_event_handle_t event = event_data;
-    esp_mqtt_client_handle_t client = event->client;
     int msg_id;
 
     ESP_LOGD(TAG, "free heap size is %" PRIu32 ", minimum %" PRIu32, esp_get_free_heap_size(), esp_get_minimum_free_heap_size());
@@ -190,7 +191,6 @@ void mqtt5_event_handler(void *handler_args, esp_event_base_t base, int32_t even
 }
 
 void mqtt_publish(const char *topic, const char *data) {
-    esp_mqtt_client_handle_t client = esp_mqtt_client_init(NULL); // Ensure correct client reference
     if (client == NULL) {
         ESP_LOGE(TAG, "MQTT client not initialized.");
         return;
@@ -201,7 +201,7 @@ void mqtt_publish(const char *topic, const char *data) {
 }
 
 
-void mqtt5_app_start(void)
+void mqtt5_app_start(void *pvParameters)
 {
     esp_mqtt5_connection_property_config_t connect_property = {
         .session_expiry_interval = 60,
@@ -233,7 +233,12 @@ void mqtt5_app_start(void)
     };
 
 
-    esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt5_cfg);
+    // Ensure client is assigned once
+    if (client == NULL) {
+        client = esp_mqtt_client_init(&mqtt5_cfg);
+    }
+
+    esp_mqtt_client_start(client);
 
     /* Set connection properties and user properties */
     esp_mqtt5_client_set_user_property(&connect_property.user_property, user_property_arr, USE_PROPERTY_ARR_SIZE);

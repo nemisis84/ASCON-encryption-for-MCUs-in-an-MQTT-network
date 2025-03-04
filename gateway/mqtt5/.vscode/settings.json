@@ -10,7 +10,13 @@
         "wifi_enterprise.h": "c",
         "esp_mac.h": "c",
         "esp_netif.h": "c",
-        "task.h": "c"
+        "task.h": "c",
+        "nvs_flash.h": "c",
+        "esp_gattc_api.h": "c",
+        "esp_gap_ble_api.h": "c",
+        "esp_gatt_common_api.h": "c",
+        "esp_bt_main.h": "c",
+        "stdio.h": "c"
     },
     "idf.flashType": "UART",
     "idf.portWin": "COM7",
