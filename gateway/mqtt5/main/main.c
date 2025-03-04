@@ -14,6 +14,11 @@ esp_netif_ip_info_t ip_info;
 bool is_wifi_connected(void) {
     esp_netif_t *netif = esp_netif_get_handle_from_ifkey("WIFI_STA_DEF");
 
+    if (!netif) {
+        ESP_LOGE(TAG, "Failed to get Wi-Fi interface handle!");
+        return false;
+    }
+
     if (esp_netif_get_ip_info(netif, &ip_info) == ESP_OK) {
         if (ip_info.ip.addr != 0) {
             return true; // Wi-Fi has an IP, meaning it's connected
@@ -42,9 +47,20 @@ void wait_for_wifi_connection() {
     ESP_LOGI(TAG, "~~~~~~~~~~~");
 }
 
+void mqtt_task(void *pvParameters) {
+    mqtt5_app_start(pvParameters);
+    vTaskDelete(NULL);  // Delete the task when done
+}
 
-void app_main(void) {
+void ble_task(void *pvParameters) {
+    ble_init(pvParameters);
+    vTaskDelete(NULL);
+}
+
+
+void app_main(void *pvParameters) {
     ESP_LOGI(TAG, "Starting system...");
+
 
     // Initialize Wi-Fi (WPA2 Enterprise)
     ESP_LOGI(TAG, "Connecting to Wi-Fi...");
@@ -55,13 +71,12 @@ void app_main(void) {
 
     // Initialize MQTT Client
     ESP_LOGI(TAG, "Starting MQTT...");
-    mqtt5_app_start();
+    xTaskCreate(mqtt_task, "mqtt_task", 8192, NULL, 5, NULL);
 
     // Initialize BLE
-    ESP_LOGI(TAG, "Starting BLE...");
-    ble_init();
+    xTaskCreate(ble_task, "ble_task", 8192, NULL, 5, NULL);
 
-
+    // ble_init();
 
     ESP_LOGI(TAG, "System initialized without crashing!");
 }
