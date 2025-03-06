@@ -1,0 +1,11 @@
+name: datastorage_env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11.*  # Use a stable Python version
+  - setuptools >= 64
+  - wheel
+  - pip >= 23.2
+  - pip:
+      - paho-mqtt == 2.1.0
