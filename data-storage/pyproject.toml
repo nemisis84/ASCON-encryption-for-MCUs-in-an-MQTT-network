@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "datastorage_app"
+version = "0.1"
+dependencies = [
+    "paho-mqtt"
+]
+
+[tool.setuptools]
+packages = ["pyascon"]  # Ensure pyascon is included as part of the package
