@@ -43,7 +43,7 @@ class SecureMQTTClient:
                                                   associated_data)
             print(f"Decrypted message: {decrypted_msg}")
         except Exception as e:
-            print(f"{e.with_traceback()}")
+            print(e)
 
     def _encrypt_message(self,
                          message: str,
@@ -52,7 +52,8 @@ class SecureMQTTClient:
         nonce = os.urandom(self.nonce_size)
         ciphertext = ascon.ascon_encrypt(self.key, nonce,
                                          associated_data.encode(),
-                                         message.encode())
+                                         message.encode(),
+                                         variant="Ascon-128a")
         return ciphertext, nonce
 
     def _parse_encrypted_message(self, payload: bytes):
@@ -73,8 +74,11 @@ class SecureMQTTClient:
     def _decrypt_message(self, ciphertext: bytes, nonce: bytes,
                          associated_data: bytes):
         """Decrypts a received message using Ascon."""
-        plaintext = ascon.ascon_decrypt(self.key, nonce, associated_data,
-                                        ciphertext)
+        plaintext = ascon.ascon_decrypt(self.key,
+                                        nonce,
+                                        associated_data,
+                                        ciphertext,
+                                        variant="Ascon-128a")
         decoded_value = int.from_bytes(plaintext, byteorder='little')
         return decoded_value
 
@@ -101,8 +105,7 @@ class SecureMQTTClient:
 
 if __name__ == "__main__":
     broker = "mqtt20.iik.ntnu.no"
-    topic = "data-storage/#"
-    topic = "/topic/qos0"
+    topic = "/ascon-e2e/#"
     client = SecureMQTTClient(broker, topic)
 
     # Connect to the broker
@@ -110,7 +113,7 @@ if __name__ == "__main__":
 
     # Publish an encrypted message
     # client.publish("Hello Secure MQTT!")
-    topic_2 = "data-storage/1"
+    topic_2 = "/ascon-e2e/PICO"
     client.publish("Hello Secure MQTT!", topic = topic_2)
     # Start listening for encrypted messages
     client.listen()

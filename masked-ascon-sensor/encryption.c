@@ -40,7 +40,7 @@ void encrypt_temperature_data(uint16_t temperature, uint8_t *output, size_t *out
 
     generate_nonce(nonce);  // ✅ Generate a fresh nonce per encryption
 
-    ascon128_masked_aead_encrypt(output, output_len, plaintext, sizeof(temperature),
+    ascon128a_masked_aead_encrypt(output, output_len, plaintext, sizeof(temperature),
                           associated_data, ad_len, nonce, &masked_key);
 }
 
@@ -59,7 +59,7 @@ void decrypt_temperature_data(uint8_t *received_data, size_t received_len, uint1
     uint8_t associated_data[] = "BLE-Temp";
     uint64_t ad_len = sizeof(associated_data) - 1;
 
-    int status = ascon128_masked_aead_decrypt(decrypted_temp, &decrypted_len, received_data, received_len - ASCON_NONCE_SIZE,
+    int status = ascon128a_masked_aead_decrypt(decrypted_temp, &decrypted_len, received_data, received_len - ASCON_NONCE_SIZE,
                                        associated_data, ad_len, received_nonce, &masked_key);
 
     if (status == 0) {
