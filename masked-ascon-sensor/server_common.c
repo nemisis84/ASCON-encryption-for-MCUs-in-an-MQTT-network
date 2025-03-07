@@ -77,7 +77,7 @@
     memcpy(final_message + encrypted_len, nonce, ASCON_NONCE_SIZE);
 
     size_t final_message_len = encrypted_len + ASCON_NONCE_SIZE;
-    printf("Sending encrypted temperature\n %s\n", final_message);
+    pretty_print("Sending encrypted temperature\n", final_message, final_message_len);
     att_server_notify(con_handle, ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_VALUE_HANDLE, final_message, final_message_len);
  }
 
@@ -96,22 +96,45 @@ int att_write_callback(hci_con_handle_t connection_handle, uint16_t att_handle, 
     UNUSED(buffer_size);
     printf("🔹 ATT Write Callback Triggered! Handle: 0x%X\n", att_handle);
 
-    if (att_handle != ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_CLIENT_CONFIGURATION_HANDLE){
-        printf("⚠️  Unexpected ATT Handle: 0x%X\n", att_handle);
+    // ✅ Handle enabling/disabling notifications
+    if (att_handle == ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_CLIENT_CONFIGURATION_HANDLE){
+        le_notification_enabled = little_endian_read_16(buffer, 0) == GATT_CLIENT_CHARACTERISTICS_CONFIGURATION_NOTIFICATION;
+        con_handle = connection_handle;
+        if (le_notification_enabled) {
+            printf("✅ Notifications Enabled!\n");
+            att_server_request_can_send_now_event(con_handle);
+        } else {
+            printf("❌ Notifications Disabled!\n");
+        }
         return 0;
     }
-    le_notification_enabled = little_endian_read_16(buffer, 0) == GATT_CLIENT_CHARACTERISTICS_CONFIGURATION_NOTIFICATION;
-    // le_notification_enabled = little_endian_read_16(buffer, 0) == 0x0003;
-    printf(" little_endian_read_16(buffer, 0) %d\n", little_endian_read_16(buffer, 0));
-    printf("GATT_CLIENT_CHARACTERISTICS_CONFIGURATION_NOTIFICATION %d\n", GATT_CLIENT_CHARACTERISTICS_CONFIGURATION_NOTIFICATION);
-    con_handle = connection_handle;
-    if (le_notification_enabled) {
-        printf("✅ Notifications Enabled!\n");
-        att_server_request_can_send_now_event(con_handle);
-    } else {
-        printf("❌ Notifications Disabled!\n");
+
+    // ✅ Handle actual data received on writable characteristic
+    if (att_handle == ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_VALUE_HANDLE) {
+        if (buffer_size > 0) {
+            printf("📩 Received Data (%d bytes): ", buffer_size);
+            for (int i = 0; i < buffer_size; i++) {
+                printf("%02X ", buffer[i]);  // Print as hex
+            }
+            printf("\n");
+
+            // Optional: Print as ASCII if it's text
+            printf("📜 Received as Text: ");
+            for (int i = 0; i < buffer_size; i++) {
+                char c = buffer[i];
+                if (c >= 32 && c <= 126) {  // Printable ASCII range
+                    printf("%c", c);
+                } else {
+                    printf(".");  // Replace non-printable characters
+                }
+            }
+            printf("\n");
+
+        } else {
+            printf("⚠️ Warning: Empty Data Received!\n");
+        }
+        return 0;
     }
-    return 0;
 }
 
 void pretty_print(const char *label, const uint8_t *data, size_t len) {
