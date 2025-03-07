@@ -37,6 +37,8 @@
     "raspberry-pi-pico.cmakePath": "${HOME}/.pico-sdk/cmake/v3.29.9/bin/cmake",
     "raspberry-pi-pico.ninjaPath": "${HOME}/.pico-sdk/ninja/v1.12.1/ninja",
     "files.associations": {
-        "aead-masked.h": "c"
-    }
+        "aead-masked.h": "c",
+        "att_db.h": "c"
+    },
+    "idf.pythonInstallPath": "/home/nemisis84/.pyenv/shims/python"
 }

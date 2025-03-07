@@ -28,7 +28,6 @@ static void heartbeat_handler(struct btstack_timer_source *ts) {
     if (counter % 10 == 0) {
         poll_temp(); // Poll the temperature sensor
         if (le_notification_enabled) { // If BLE notifications are enabled
-            printf("Sending encrypted temperature\n");
             att_server_request_can_send_now_event(con_handle); // Send the temperature value
         }
     }
