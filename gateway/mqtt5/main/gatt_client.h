@@ -12,6 +12,12 @@
 void ble_init(void *pvParameters);
 
 /**
+ * @brief Forward data to the BLE GATT server.
+ * 
+ * This function sends data to the BLE GATT server.
+ */
+void ble_forward(uint8_t *data, size_t len);
+/**
  * @brief BLE event handler for scanning and connection updates.
  * 
  * This function handles GATT client events, including scanning,

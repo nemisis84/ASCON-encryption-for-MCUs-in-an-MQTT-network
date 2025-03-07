@@ -38,7 +38,7 @@
 #define REMOTE_NOTIFY_CHAR_UUID    0x2A6E   // Temperature Measurement Characteristic UUID
 
 #define PROFILE_NUM      1
-#define PROFILE_A_APP_ID 0
+#define PICO_APP_ID 0
 #define INVALID_HANDLE   0
 
 static char remote_device_name[ESP_BLE_ADV_NAME_LEN_MAX] = "Pico";
@@ -90,7 +90,7 @@ struct gattc_profile_inst {
 
 /* One gatt-based profile one app_id and one gattc_if, this array will store the gattc_if returned by ESP_GATTS_REG_EVT */
 static struct gattc_profile_inst gl_profile_tab[PROFILE_NUM] = {
-    [PROFILE_A_APP_ID] = {
+    [PICO_APP_ID] = {
         .gattc_cb = gattc_profile_event_handler,
         .gattc_if = ESP_GATT_IF_NONE,       /* Not get the gatt_if, so initial is ESP_GATT_IF_NONE */
     },
@@ -111,8 +111,8 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
     case ESP_GATTC_CONNECT_EVT:{
         ESP_LOGI(GATTC_TAG, "Connected, conn_id %d, remote "ESP_BD_ADDR_STR"", p_data->connect.conn_id,
                  ESP_BD_ADDR_HEX(p_data->connect.remote_bda));
-        gl_profile_tab[PROFILE_A_APP_ID].conn_id = p_data->connect.conn_id;
-        memcpy(gl_profile_tab[PROFILE_A_APP_ID].remote_bda, p_data->connect.remote_bda, sizeof(esp_bd_addr_t));
+        gl_profile_tab[PICO_APP_ID].conn_id = p_data->connect.conn_id;
+        memcpy(gl_profile_tab[PICO_APP_ID].remote_bda, p_data->connect.remote_bda, sizeof(esp_bd_addr_t));
         esp_err_t mtu_ret = esp_ble_gattc_send_mtu_req (gattc_if, p_data->connect.conn_id);
         if (mtu_ret){
             ESP_LOGE(GATTC_TAG, "Config MTU error, error code = %x", mtu_ret);
@@ -143,8 +143,8 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
         if (p_data->search_res.srvc_id.uuid.len == ESP_UUID_LEN_16 && p_data->search_res.srvc_id.uuid.uuid.uuid16 == REMOTE_SERVICE_UUID) {
             ESP_LOGI(GATTC_TAG, "Service found");
             get_server = true;
-            gl_profile_tab[PROFILE_A_APP_ID].service_start_handle = p_data->search_res.start_handle;
-            gl_profile_tab[PROFILE_A_APP_ID].service_end_handle = p_data->search_res.end_handle;
+            gl_profile_tab[PICO_APP_ID].service_start_handle = p_data->search_res.start_handle;
+            gl_profile_tab[PICO_APP_ID].service_end_handle = p_data->search_res.end_handle;
             ESP_LOGI(GATTC_TAG, "UUID16: %x", p_data->search_res.srvc_id.uuid.uuid.uuid16);
         }
         break;
@@ -167,8 +167,8 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
             esp_gatt_status_t status = esp_ble_gattc_get_attr_count( gattc_if,
                                                                      p_data->search_cmpl.conn_id,
                                                                      ESP_GATT_DB_CHARACTERISTIC,
-                                                                     gl_profile_tab[PROFILE_A_APP_ID].service_start_handle,
-                                                                     gl_profile_tab[PROFILE_A_APP_ID].service_end_handle,
+                                                                     gl_profile_tab[PICO_APP_ID].service_start_handle,
+                                                                     gl_profile_tab[PICO_APP_ID].service_end_handle,
                                                                      INVALID_HANDLE,
                                                                      &count);
             if (status != ESP_GATT_OK){
@@ -184,8 +184,8 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
                 }else{
                     status = esp_ble_gattc_get_char_by_uuid( gattc_if,
                                                              p_data->search_cmpl.conn_id,
-                                                             gl_profile_tab[PROFILE_A_APP_ID].service_start_handle,
-                                                             gl_profile_tab[PROFILE_A_APP_ID].service_end_handle,
+                                                             gl_profile_tab[PICO_APP_ID].service_start_handle,
+                                                             gl_profile_tab[PICO_APP_ID].service_end_handle,
                                                              remote_filter_char_uuid,
                                                              char_elem_result,
                                                              &count);
@@ -198,8 +198,8 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
 
                     /*  Every service have only one char in our 'ESP_GATTS_DEMO' demo, so we used first 'char_elem_result' */
                     if (count > 0 && (char_elem_result[0].properties & ESP_GATT_CHAR_PROP_BIT_NOTIFY)){
-                        gl_profile_tab[PROFILE_A_APP_ID].char_handle = char_elem_result[0].char_handle;
-                        esp_ble_gattc_register_for_notify (gattc_if, gl_profile_tab[PROFILE_A_APP_ID].remote_bda, char_elem_result[0].char_handle);
+                        gl_profile_tab[PICO_APP_ID].char_handle = char_elem_result[0].char_handle;
+                        esp_ble_gattc_register_for_notify (gattc_if, gl_profile_tab[PICO_APP_ID].remote_bda, char_elem_result[0].char_handle);
                     }
                 }
                 /* free char_elem_result */
@@ -217,11 +217,11 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
             uint16_t count = 0;
             uint16_t notify_en = 1;
             esp_gatt_status_t ret_status = esp_ble_gattc_get_attr_count( gattc_if,
-                                                                         gl_profile_tab[PROFILE_A_APP_ID].conn_id,
+                                                                         gl_profile_tab[PICO_APP_ID].conn_id,
                                                                          ESP_GATT_DB_DESCRIPTOR,
-                                                                         gl_profile_tab[PROFILE_A_APP_ID].service_start_handle,
-                                                                         gl_profile_tab[PROFILE_A_APP_ID].service_end_handle,
-                                                                         gl_profile_tab[PROFILE_A_APP_ID].char_handle,
+                                                                         gl_profile_tab[PICO_APP_ID].service_start_handle,
+                                                                         gl_profile_tab[PICO_APP_ID].service_end_handle,
+                                                                         gl_profile_tab[PICO_APP_ID].char_handle,
                                                                          &count);
             if (ret_status != ESP_GATT_OK){
                 ESP_LOGE(GATTC_TAG, "esp_ble_gattc_get_attr_count error");
@@ -234,7 +234,7 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
                     break;
                 }else{
                     ret_status = esp_ble_gattc_get_descr_by_char_handle( gattc_if,
-                                                                         gl_profile_tab[PROFILE_A_APP_ID].conn_id,
+                                                                         gl_profile_tab[PICO_APP_ID].conn_id,
                                                                          p_data->reg_for_notify.handle,
                                                                          notify_descr_uuid,
                                                                          descr_elem_result,
@@ -248,7 +248,7 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
                     /* Every char has only one descriptor in our 'ESP_GATTS_DEMO' demo, so we used first 'descr_elem_result' */
                     if (count > 0 && descr_elem_result[0].uuid.len == ESP_UUID_LEN_16 && descr_elem_result[0].uuid.uuid.uuid16 == ESP_GATT_UUID_CHAR_CLIENT_CONFIG){
                         ret_status = esp_ble_gattc_write_char_descr( gattc_if,
-                                                                     gl_profile_tab[PROFILE_A_APP_ID].conn_id,
+                                                                     gl_profile_tab[PICO_APP_ID].conn_id,
                                                                      descr_elem_result[0].handle,
                                                                      sizeof(notify_en),
                                                                      (uint8_t *)&notify_en,
@@ -283,7 +283,7 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
         memcpy(ble_data_str, p_data->notify.value, p_data->notify.value_len);
 
         // Publish BLE data to MQTT
-        mqtt_publish("/topic/qos0", ble_data_str);
+        mqtt_publish("/ascon-e2e/data-storage", ble_data_str);
             break;
     case ESP_GATTC_WRITE_DESCR_EVT:
         if (p_data->write.status != ESP_GATT_OK){
@@ -297,8 +297,8 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
             write_char_data[i] = i % 256;
         }
         esp_ble_gattc_write_char( gattc_if,
-                                  gl_profile_tab[PROFILE_A_APP_ID].conn_id,
-                                  gl_profile_tab[PROFILE_A_APP_ID].char_handle,
+                                  gl_profile_tab[PICO_APP_ID].conn_id,
+                                  gl_profile_tab[PICO_APP_ID].char_handle,
                                   sizeof(write_char_data),
                                   write_char_data,
                                   ESP_GATT_WRITE_TYPE_RSP,
@@ -387,7 +387,7 @@ static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
                         creat_conn_params.is_direct = true;
                         creat_conn_params.is_aux = false;
                         creat_conn_params.phy_mask = 0x0;
-                        esp_ble_gattc_enh_open(gl_profile_tab[PROFILE_A_APP_ID].gattc_if,
+                        esp_ble_gattc_enh_open(gl_profile_tab[PICO_APP_ID].gattc_if,
                                             &creat_conn_params);
                     }
                 }
@@ -463,6 +463,29 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
     } while (0);
 }
 
+void ble_forward(uint8_t *data, size_t len) {
+
+    ESP_LOGI(GATTC_TAG, "🔹 Sending BLE data: %.*s", len, data);
+    ESP_LOGI(GATTC_TAG, "🔹 Writing to Characteristic Handle: %d", gl_profile_tab[PICO_APP_ID].char_handle);
+
+    // ✅ Send data to the characteristic
+    esp_err_t err = esp_ble_gattc_write_char(
+        gl_profile_tab[PICO_APP_ID].gattc_if,
+        gl_profile_tab[PICO_APP_ID].conn_id,
+        gl_profile_tab[PICO_APP_ID].char_handle, // Use the writable handle
+        len,
+        data,
+        ESP_GATT_WRITE_TYPE_RSP,
+        ESP_GATT_AUTH_REQ_NONE
+    );
+
+    if (err != ESP_OK) {
+        ESP_LOGE(GATTC_TAG, "❌ BLE Write Failed: %s", esp_err_to_name(err));
+    } else {
+        ESP_LOGI(GATTC_TAG, "✅ BLE Write Success!");
+    }
+}
+
 void ble_init(void *pvParameters) {
     ESP_LOGI(GATTC_TAG, "Initializing BLE...");
 
@@ -509,7 +532,7 @@ void ble_init(void *pvParameters) {
         return;
     }
 
-    ret = esp_ble_gattc_app_register(PROFILE_A_APP_ID);
+    ret = esp_ble_gattc_app_register(PICO_APP_ID);
     if (ret) {
         ESP_LOGE(GATTC_TAG, "Failed to register GATT app: %s", esp_err_to_name(ret));
     }
