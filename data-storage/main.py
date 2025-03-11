@@ -97,14 +97,6 @@ class SecureMQTTClient:
         encrypted_payload = ciphertext + nonce
         self.client.publish(topic, encrypted_payload)
 
-        # ✅ Print Debug Info
-        print(f"🔹 Published Encrypted Message to {topic}")
-        print(f"   🔹 Ciphertext ({len(ciphertext)} bytes): {ciphertext.hex()}")
-        print(f"   🔹 Nonce ({len(nonce)} bytes): {nonce.hex()}")
-        print(f"   🔹 Full Payload ({len(encrypted_payload)} bytes): {encrypted_payload.hex()}")
-
-
-
     def listen(self):
         """Keep listening for incoming messages."""
         print("Listening for messages...")
