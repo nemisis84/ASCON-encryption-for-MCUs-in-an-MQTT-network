@@ -1,7 +1,6 @@
 import os
 import pyascon.ascon as ascon
 import paho.mqtt.client as mqtt
-import struct
 
 
 class SecureMQTTClient:
@@ -50,10 +49,12 @@ class SecureMQTTClient:
                          associated_data: str = "BLE-Temp"):
         """Encrypts a message using Ascon."""
         nonce = os.urandom(self.nonce_size)
-        ciphertext = ascon.ascon_encrypt(self.key, nonce,
+        ciphertext = ascon.ascon_encrypt(self.key,
+                                         nonce,
                                          associated_data.encode(),
                                          message.encode(),
                                          variant="Ascon-128a")
+
         return ciphertext, nonce
 
     def _parse_encrypted_message(self, payload: bytes):
@@ -86,16 +87,15 @@ class SecureMQTTClient:
         """Connect to the MQTT broker."""
         self.client.connect(self.broker, self.port, 60)
 
-    from typing import Optional
 
-    def publish(self, message: str, topic = None):
+    def publish(self, message: str, topic=None):
         """Encrypt and publish a message to the MQTT topic."""
         if not topic:
             topic = self.topic
-        ciphertext_hex, nonce = self._encrypt_message(message)
-        encrypted_payload = ciphertext_hex + nonce
+
+        ciphertext, nonce = self._encrypt_message(message)
+        encrypted_payload = ciphertext + nonce
         self.client.publish(topic, encrypted_payload)
-        print(f"Published encrypted message: {encrypted_payload} to {topic}")
 
     def listen(self):
         """Keep listening for incoming messages."""
@@ -105,15 +105,11 @@ class SecureMQTTClient:
 
 if __name__ == "__main__":
     broker = "mqtt20.iik.ntnu.no"
-    topic = "/ascon-e2e/#"
+    topic = "/ascon-e2e/data-storage"
     client = SecureMQTTClient(broker, topic)
-
     # Connect to the broker
     client.connect()
-
     # Publish an encrypted message
-    # client.publish("Hello Secure MQTT!")
-    topic_2 = "/ascon-e2e/PICO"
-    client.publish("Hello Secure MQTT!", topic = topic_2)
+    client.publish("Hei!", topic="/ascon-e2e/PICO")
     # Start listening for encrypted messages
     client.listen()

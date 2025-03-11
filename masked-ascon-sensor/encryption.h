@@ -4,8 +4,10 @@
 #include <stdint.h>
 #include <stddef.h>
 
-void encrypt_temperature_data(uint16_t temperature, uint8_t *output, size_t *output_len, uint8_t *nonce);
-void decrypt_temperature_data(uint8_t *received_data, size_t received_len, uint16_t *output);
+void init_prng();
+void initialize_masked_key();
+void encrypt(uint16_t temperature, uint8_t *output, size_t *output_len, uint8_t *nonce);
+int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_t *output_len);
 void generate_nonce(uint8_t *nonce);
 
 #endif // ENCRYPTION_H
