@@ -13,6 +13,9 @@
  #include "encryption.h"
  
  #define APP_AD_FLAGS 0x06
+ #define ASCON_NONCE_SIZE 16
+ #define MAX_PACKET_SIZE 128 // Maximum size of a packet to prevent out-of-memory issues
+
  static uint8_t adv_data[] = {
      0x02, BLUETOOTH_DATA_TYPE_FLAGS, APP_AD_FLAGS,
      0x17, BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME, 'P', 'i', 'c', 'o', ' ', '0', '0', ':', '0', '0', ':', '0', '0', ':', '0', '0', ':', '0', '0', ':', '0', '0',
@@ -24,6 +27,34 @@
  hci_con_handle_t con_handle;
  uint16_t current_temp;
  
+ 
+ void pretty_print(const char *label, const uint8_t *data, size_t len) {
+    printf("%s: ", label);
+    for (size_t i = 0; i < len; i++) {
+        printf("%02X ", data[i]);  // Print each byte in hex
+    }
+    printf("\n");
+}
+
+
+ void send_encrypted_temperature() {
+    uint8_t encrypted_temp[32];  // Buffer for encrypted data
+    size_t encrypted_len;
+    uint8_t nonce[ASCON_NONCE_SIZE];
+
+    encrypt(current_temp, encrypted_temp, &encrypted_len, nonce);
+
+    // Create final message: Encrypted data + nonce
+    uint8_t final_message[32 + ASCON_NONCE_SIZE];
+    memcpy(final_message, encrypted_temp, encrypted_len);
+    memcpy(final_message + encrypted_len, nonce, ASCON_NONCE_SIZE);
+
+    size_t final_message_len = encrypted_len + ASCON_NONCE_SIZE;
+    pretty_print("Sending encrypted temperature\n", final_message, final_message_len);
+    att_server_notify(con_handle, ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_VALUE_HANDLE, final_message, final_message_len);
+ }
+
+
  void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size) {
      UNUSED(size);
      UNUSED(channel);
@@ -62,24 +93,6 @@
      }
  }
  
- #define ASCON_NONCE_SIZE 16
-
- void send_encrypted_temperature() {
-    uint8_t encrypted_temp[32];  // Buffer for encrypted data
-    size_t encrypted_len;
-    uint8_t nonce[ASCON_NONCE_SIZE];
-
-    encrypt_temperature_data(current_temp, encrypted_temp, &encrypted_len, nonce);
-
-    // Create final message: Encrypted data + nonce
-    uint8_t final_message[32 + ASCON_NONCE_SIZE];
-    memcpy(final_message, encrypted_temp, encrypted_len);
-    memcpy(final_message + encrypted_len, nonce, ASCON_NONCE_SIZE);
-
-    size_t final_message_len = encrypted_len + ASCON_NONCE_SIZE;
-    pretty_print("Sending encrypted temperature\n", final_message, final_message_len);
-    att_server_notify(con_handle, ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_VALUE_HANDLE, final_message, final_message_len);
- }
 
 uint16_t att_read_callback(hci_con_handle_t connection_handle, uint16_t att_handle, uint16_t offset, uint8_t * buffer, uint16_t buffer_size) {
     UNUSED(connection_handle);
@@ -90,59 +103,59 @@ uint16_t att_read_callback(hci_con_handle_t connection_handle, uint16_t att_hand
     return 0;
 }
 
+void recieve_encrypted_data(uint8_t *received_data, size_t received_len) {
+    uint8_t *decrypted_data = NULL;
+    size_t decrypted_len = 0;
+
+    if (received_len > MAX_PACKET_SIZE) {
+        printf("Received packet is too large! Rejecting.\n");
+        return;
+    }
+
+    int status = decrypt(received_data, received_len, &decrypted_data, &decrypted_len);
+
+    if (status == 0) {
+
+        char data[decrypted_len + 1];
+        memcpy(data, decrypted_data, decrypted_len);
+        data[decrypted_len] = '\0';
+
+        printf("Decrypted data: %s\n", data);
+
+        free(decrypted_data);  // Prevent memory leak
+    } else {
+        printf("Decryption failed! Invalid or tampered message.\n");
+    }
+}
+
+
 int att_write_callback(hci_con_handle_t connection_handle, uint16_t att_handle, uint16_t transaction_mode, uint16_t offset, uint8_t *buffer, uint16_t buffer_size) {
     UNUSED(transaction_mode);
     UNUSED(offset);
     UNUSED(buffer_size);
     printf("🔹 ATT Write Callback Triggered! Handle: 0x%X\n", att_handle);
 
-    // ✅ Handle enabling/disabling notifications
     if (att_handle == ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_CLIENT_CONFIGURATION_HANDLE){
         le_notification_enabled = little_endian_read_16(buffer, 0) == GATT_CLIENT_CHARACTERISTICS_CONFIGURATION_NOTIFICATION;
         con_handle = connection_handle;
         if (le_notification_enabled) {
-            printf("✅ Notifications Enabled!\n");
+            printf("Notifications Enabled!\n");
             att_server_request_can_send_now_event(con_handle);
         } else {
-            printf("❌ Notifications Disabled!\n");
+            printf("Notifications Disabled!\n");
         }
         return 0;
     }
 
-    // ✅ Handle actual data received on writable characteristic
     if (att_handle == ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_VALUE_HANDLE) {
         if (buffer_size > 0) {
-            printf("📩 Received Data (%d bytes): ", buffer_size);
-            for (int i = 0; i < buffer_size; i++) {
-                printf("%02X ", buffer[i]);  // Print as hex
-            }
-            printf("\n");
-
-            // Optional: Print as ASCII if it's text
-            printf("📜 Received as Text: ");
-            for (int i = 0; i < buffer_size; i++) {
-                char c = buffer[i];
-                if (c >= 32 && c <= 126) {  // Printable ASCII range
-                    printf("%c", c);
-                } else {
-                    printf(".");  // Replace non-printable characters
-                }
-            }
-            printf("\n");
-
+            // Decrypt and print data
+            recieve_encrypted_data(buffer, buffer_size);
         } else {
-            printf("⚠️ Warning: Empty Data Received!\n");
+            printf("Empty Data Received!\n");
         }
         return 0;
     }
-}
-
-void pretty_print(const char *label, const uint8_t *data, size_t len) {
-    printf("%s: ", label);
-    for (size_t i = 0; i < len; i++) {
-        printf("%02X ", data[i]);  // Print each byte in hex
-    }
-    printf("\n");
 }
 
 

@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "ascon/aead-masked.h"
 #include "encryption.h"
 #include "ascon/random.h"
-
 
 #define ASCON_KEY_SIZE 16
 #define ASCON_NONCE_SIZE 16
@@ -31,41 +31,49 @@ void initialize_masked_key() {
 }
 
 
-void encrypt_temperature_data(uint16_t temperature, uint8_t *output, size_t *output_len, uint8_t *nonce) {
+void encrypt(uint16_t temperature, uint8_t *output, size_t *output_len, uint8_t *nonce) {
     uint8_t plaintext[sizeof(temperature)];
     memcpy(plaintext, &temperature, sizeof(temperature));
 
     uint8_t associated_data[] = "BLE-Temp";
     uint64_t ad_len = sizeof(associated_data) - 1;
 
-    generate_nonce(nonce);  // ✅ Generate a fresh nonce per encryption
+    generate_nonce(nonce);
 
     ascon128a_masked_aead_encrypt(output, output_len, plaintext, sizeof(temperature),
                           associated_data, ad_len, nonce, &masked_key);
 }
 
-void decrypt_temperature_data(uint8_t *received_data, size_t received_len, uint16_t *output) {
-    if (received_len < (sizeof(uint16_t) + ASCON_TAG_SIZE + ASCON_NONCE_SIZE)) {
+int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_t *output_len) {
+    if (received_len < (ASCON_TAG_SIZE + ASCON_NONCE_SIZE)) {
         printf("Error: Received packet too small\n");
-        return;
+        return -1;
     }
-
-    uint8_t decrypted_temp[sizeof(uint16_t)];
-    size_t decrypted_len;
 
     uint8_t received_nonce[ASCON_NONCE_SIZE];
     memcpy(received_nonce, received_data + received_len - ASCON_NONCE_SIZE, ASCON_NONCE_SIZE);
 
     uint8_t associated_data[] = "BLE-Temp";
     uint64_t ad_len = sizeof(associated_data) - 1;
+    
+    size_t max_decrypted_size = received_len - ASCON_NONCE_SIZE;
+    uint8_t *decrypted_data = (uint8_t *)malloc(max_decrypted_size);
+    if (!decrypted_data) {
+        printf("Memory allocation failed!\n");
+        return -1;
+    }
+    
+    int status = ascon128a_masked_aead_decrypt(
+        decrypted_data, output_len, received_data, max_decrypted_size,
+        associated_data, ad_len, received_nonce, &masked_key
+    );
 
-    int status = ascon128a_masked_aead_decrypt(decrypted_temp, &decrypted_len, received_data, received_len - ASCON_NONCE_SIZE,
-                                       associated_data, ad_len, received_nonce, &masked_key);
 
-    if (status == 0) {
-        memcpy(output, decrypted_temp, sizeof(uint16_t));
-        printf("Decrypted Temperature: %.2f°C\n", *output / 100.0);
+    if (status >= 0) {
+        *output = decrypted_data;
+        return 0;
     } else {
-        printf("Decryption failed! Invalid data or tampered message.\n");
+        free(decrypted_data);
+        return -1;
     }
 }
