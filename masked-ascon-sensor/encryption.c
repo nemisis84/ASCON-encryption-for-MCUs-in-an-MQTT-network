@@ -4,6 +4,7 @@
 #include "ascon/aead-masked.h"
 #include "encryption.h"
 #include "ascon/random.h"
+#include "server_common.h"
 
 #define ASCON_KEY_SIZE 16
 #define ASCON_NONCE_SIZE 16
@@ -35,8 +36,7 @@ void encrypt(uint16_t temperature, uint8_t *output, size_t *output_len, uint8_t 
     uint8_t plaintext[sizeof(temperature)];
     memcpy(plaintext, &temperature, sizeof(temperature));
 
-    uint8_t associated_data[] = "BLE-Temp";
-    uint64_t ad_len = sizeof(associated_data) - 1;
+    size_t ad_len = strlen((char *)associated_data);
 
     generate_nonce(nonce);
 
@@ -53,8 +53,7 @@ int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_
     uint8_t received_nonce[ASCON_NONCE_SIZE];
     memcpy(received_nonce, received_data + received_len - ASCON_NONCE_SIZE, ASCON_NONCE_SIZE);
 
-    uint8_t associated_data[] = "BLE-Temp";
-    uint64_t ad_len = sizeof(associated_data) - 1;
+    size_t ad_len = strlen((char *)associated_data);
     
     size_t max_decrypted_size = received_len - ASCON_NONCE_SIZE;
     uint8_t *decrypted_data = (uint8_t *)malloc(max_decrypted_size);

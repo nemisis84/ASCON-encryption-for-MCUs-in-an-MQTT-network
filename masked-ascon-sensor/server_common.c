@@ -27,6 +27,8 @@
  hci_con_handle_t con_handle;
  uint16_t current_temp;
  
+ uint8_t associated_data[] = "|TEMP-1";
+ 
  
  void pretty_print(const char *label, const uint8_t *data, size_t len) {
     printf("%s: ", label);
@@ -43,13 +45,14 @@
     uint8_t nonce[ASCON_NONCE_SIZE];
 
     encrypt(current_temp, encrypted_temp, &encrypted_len, nonce);
-
+    size_t ad_len = strlen(associated_data);
     // Create final message: Encrypted data + nonce
     uint8_t final_message[32 + ASCON_NONCE_SIZE];
     memcpy(final_message, encrypted_temp, encrypted_len);
     memcpy(final_message + encrypted_len, nonce, ASCON_NONCE_SIZE);
+    memcpy(final_message + encrypted_len + ASCON_NONCE_SIZE, associated_data, ad_len);
 
-    size_t final_message_len = encrypted_len + ASCON_NONCE_SIZE;
+    size_t final_message_len = encrypted_len + ASCON_NONCE_SIZE + ad_len;
     pretty_print("Sending encrypted temperature\n", final_message, final_message_len);
     att_server_notify(con_handle, ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_VALUE_HANDLE, final_message, final_message_len);
  }
