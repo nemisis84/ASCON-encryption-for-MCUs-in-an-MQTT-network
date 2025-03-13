@@ -13,6 +13,7 @@ class SecureMQTTClient:
 
         # Ascon encryption parameters
         self.key = bytes.fromhex("000102030405060708090A0B0C0D0E0F")
+        self.devices = {"TEMP-1": bytes.fromhex("000102030405060708090A0B0C0D0E0F")}
         self.nonce_size = 16
 
         # Initialize MQTT client
@@ -39,9 +40,10 @@ class SecureMQTTClient:
             ciphertext, nonce, associated_data = self._parse_encrypted_message(
                 payload)
             decrypted_msg = self._decrypt_message(ciphertext, nonce,
-                                                  associated_data)
+                                                    associated_data)
             print(f"Decrypted message: {decrypted_msg}")
         except Exception as e:
+            print("❌ Error decrypting message:")
             print(e)
 
     def _encrypt_message(self,
@@ -64,18 +66,24 @@ class SecureMQTTClient:
             print("Error: Payload too short to contain a valid nonce.")
             return None, None, None
 
-        nonce = payload[-self.nonce_size:]
+        ad_start_index = payload.rfind(b"|TEMP-")  # Locate the start of AD
 
-        ciphertext = payload[:-self.nonce_size]
-
-        associated_data = "BLE-Temp".encode()  # Hardcoded for now
-
+        if ad_start_index == -1:
+            print("❌ Error: Associated Data not found in payload.")
+            return None, None, None
+        
+        associated_data = payload[ad_start_index:]  # AD starts from this index
+        nonce = payload[ad_start_index-self.nonce_size:ad_start_index]
+        ciphertext = payload[:ad_start_index-self.nonce_size]
         return ciphertext, nonce, associated_data
 
     def _decrypt_message(self, ciphertext: bytes, nonce: bytes,
                          associated_data: bytes):
         """Decrypts a received message using Ascon."""
-        plaintext = ascon.ascon_decrypt(self.key,
+        associated_str = associated_data.decode()[1:]
+        key = self.devices[associated_str]
+        print(f"Nonce: {len(nonce)}, ciphertext: {len(ciphertext)}")
+        plaintext = ascon.ascon_decrypt(key,
                                         nonce,
                                         associated_data,
                                         ciphertext,
