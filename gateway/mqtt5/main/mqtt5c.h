@@ -18,7 +18,7 @@ void mqtt5_app_start(void *pvParameters);
  * @param topic The MQTT topic to publish to.
  * @param data The message payload.
  */
-void mqtt_publish(const char *topic, const char *data);
+void mqtt_publish(const char *topic, const char *data, size_t len);
 
 /**
  * @brief Callback function to handle received MQTT messages.

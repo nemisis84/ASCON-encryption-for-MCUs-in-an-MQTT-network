@@ -24,8 +24,8 @@ static void heartbeat_handler(struct btstack_timer_source *ts) {
     static uint32_t counter = 0;
     counter++;
 
-    // Update the temp every 10s
-    if (counter % 10 == 0) {
+    // Update the temp every 5s
+    if (counter % 1 == 0) {
         poll_temp(); // Poll the temperature sensor
         if (le_notification_enabled) { // If BLE notifications are enabled
             att_server_request_can_send_now_event(con_handle); // Send the temperature value

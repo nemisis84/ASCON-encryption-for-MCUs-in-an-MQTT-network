@@ -201,13 +201,16 @@
  }
  
  
- void mqtt_publish(const char *topic,const char *data) {
+ void mqtt_publish(const char *topic, const char *data, size_t len) {
      if (client == NULL) {
          ESP_LOGE(TAG, "MQTT client not initialized.");
          return;
      }
- 
-     int msg_id = esp_mqtt_client_publish(client, topic, data, 0, 1, 0);
+
+     ESP_LOGI(TAG, "🔹 MQTT Debug: Data Before Publish (Raw HEX)");
+     ESP_LOG_BUFFER_HEX(TAG, data, len);  
+
+     int msg_id = esp_mqtt_client_publish(client, topic, (const char *)data, len, 1, 0);
      ESP_LOGI(TAG, "Published message to %s: %s (msg_id=%d)", topic, data, msg_id);
  }
  
