@@ -18,3 +18,4 @@ build/
 # Ignore IDE-specific files
 .vscode/
 .idea/
+results/

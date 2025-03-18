@@ -9,3 +9,4 @@ dependencies:
   - pip >= 23.2
   - pip:
       - paho-mqtt == 2.1.0
+      - pandas == 2.2.3
