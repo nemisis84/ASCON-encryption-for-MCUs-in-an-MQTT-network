@@ -273,19 +273,21 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
     }
     case ESP_GATTC_NOTIFY_EVT:
         if (p_data->notify.is_notify){
-            ESP_LOGI(GATTC_TAG, "Notification received");
+            ESP_LOGI(GATTC_TAG, "🔹 Notification received, size: %d", p_data->notify.value_len);
         }else{
-            ESP_LOGI(GATTC_TAG, "Indication received");
+            ESP_LOGI(GATTC_TAG, "🔹 Indication received, size: %d", p_data->notify.value_len);
         }
+
         ESP_LOG_BUFFER_HEX(GATTC_TAG, p_data->notify.value, p_data->notify.value_len);
-        // Convert BLE data to a string (assuming it's text-based)
-        uint8_t ble_data_buffer[128] = {0};  // ✅ Use uint8_t, NOT char
-        size_t copy_len = (p_data->notify.value_len < sizeof(ble_data_buffer)) ? p_data->notify.value_len : sizeof(ble_data_buffer) - 1;
+
+        uint8_t ble_data_buffer[512] = {0}; 
+
+        size_t copy_len = (p_data->notify.value_len < sizeof(ble_data_buffer)) ? 
+                        p_data->notify.value_len : sizeof(ble_data_buffer);
         memcpy(ble_data_buffer, p_data->notify.value, copy_len);
 
-        // ✅ Send BLE data as raw binary to MQTT
-        mqtt_publish("/ascon-e2e/data-storage", (const char *)(void *)ble_data_buffer, copy_len);
-        
+        mqtt_publish("/ascon-e2e/data-storage", (const char *)ble_data_buffer, copy_len);
+
             break;
     case ESP_GATTC_WRITE_DESCR_EVT:
         if (p_data->write.status != ESP_GATT_OK){
