@@ -14,6 +14,38 @@
 static ascon_random_state_t prng_state;  // 🔹 Persistent PRNG state
 uint8_t nonce[ASCON_NONCE_SIZE];
 
+void log_start_decryption_time(uint16_t seq_num) {
+    if (seq_num >= MAX_PACKETS) return;  // Avoid overflow
+
+    decryption_times[seq_num].seq_num = seq_num;
+    decryption_times[seq_num].start_time = (uint64_t)time_us_64();  // Example with seconds (use microseconds for precision)
+}
+
+void log_end_decryption_time(uint16_t seq_num) {
+    if (seq_num >= MAX_PACKETS) return;  // Avoid overflow
+    if (seq_num < 0) {
+        decryption_times[seq_num].end_time = 0;
+    } else {
+        decryption_times[seq_num].end_time = (uint64_t)time_us_64();  // Example with seconds (use microseconds for precision)
+    }
+}
+
+void log_start_encryption_time(uint16_t seq_num) {
+    if (seq_num >= MAX_PACKETS) return;  // Avoid overflow
+
+    encryption_times[seq_num].seq_num = seq_num;
+    encryption_times[seq_num].start_time = (uint64_t)time_us_64();  // Example with seconds (use microseconds for precision)
+}
+
+void log_end_encryption_time(uint16_t seq_num) {
+    if (seq_num >= MAX_PACKETS) return;  // Avoid overflow
+    if (seq_num < 0) {
+        encryption_times[seq_num].end_time = 0;
+    } else {
+        encryption_times[seq_num].end_time = (uint64_t)time_us_64();  // Example with seconds (use microseconds for precision)
+    }
+}
+
 void init_prng() {
     ascon_random_init(&prng_state);
 }
@@ -32,16 +64,18 @@ void initialize_masked_key() {
 }
 
 
-void encrypt(uint16_t data, uint8_t *output, size_t *output_len, uint8_t *nonce, char *associated_data) {
+void encrypt(uint16_t data, uint8_t *output, size_t *output_len, uint8_t *nonce, char *associated_data, uint16_t counter) {
     uint8_t plaintext[sizeof(data)];
     memcpy(plaintext, &data, sizeof(data));
 
     size_t ad_len = strlen(associated_data);
 
     generate_nonce(nonce);
-
+    printf("counter: %d\n", counter);
+    log_start_encryption_time(counter);
     ascon128a_masked_aead_encrypt(output, output_len, plaintext, sizeof(data),
                           (char *)associated_data, ad_len, nonce, &masked_key);
+    log_end_encryption_time(counter);
 }
 
 int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_t *output_len, uint16_t *sequence_number) {
@@ -107,6 +141,7 @@ int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_
     printf("✅ Parsed Sensor ID: %s, Sequence Number: %d\n", received_sensor_id, *sequence_number);
 
     // 🔹 Perform Decryption
+    log_start_decryption_time(*sequence_number);
     int status = ascon128a_masked_aead_decrypt(
         decrypted_data, output_len, ciphertext, ciphertext_len,
         (uint8_t *)extracted_ad, ad_len, received_nonce, &masked_key
@@ -114,9 +149,11 @@ int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_
 
     if (status >= 0) {
         *output = decrypted_data;
+        log_end_decryption_time(*sequence_number);
         log_end_time(*sequence_number);
         return 0;
     } else {
+        log_end_decryption_time(-1);
         free(decrypted_data);
         return -1;
     }

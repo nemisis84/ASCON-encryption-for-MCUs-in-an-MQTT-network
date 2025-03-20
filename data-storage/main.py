@@ -28,6 +28,7 @@ class SecureMQTTClient:
         self.send_back = send_back
 
         self.recive_data_mode = False
+        self.recieving_data_type = ""
         self.received_bytes = b""
 
         print(f"MQTT Protocol Version: {self.client._protocol}")
@@ -48,7 +49,7 @@ class SecureMQTTClient:
                 ciphertext, nonce, associated_data = self._parse_encrypted_message(
                 payload)
                 if self.recive_data_mode:
-                    print(f"Recive data mode")
+                    print("Recive data mode")
                     return
                 decrypted_msg = self._decrypt_message(ciphertext, nonce,
                                                         associated_data)
@@ -119,7 +120,7 @@ class SecureMQTTClient:
 
         # Generate a timestamped filename
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        file_path = os.path.join(results_dir, f"rtt_results_{timestamp}.csv")
+        file_path = os.path.join(results_dir, f"{self.recieving_data_type}_{timestamp}.csv")
 
         # Save DataFrame to CSV
         df.to_csv(file_path, index=False)
@@ -144,12 +145,32 @@ class SecureMQTTClient:
         print(f"🔹 Encryption Time: {(end_time - start_time) / 1000:.2f} µs")
         return ciphertext, nonce
 
+    def _check_if_data_is_incoming(self, payload):
+        # Convert payload to string for easier processing
+        payload_str = payload.decode("utf-8", errors="ignore")
+
+        # Define the allowed data types
+        data_types = {"RTT", "ENC", "DEC"}
+
+        if "|" in payload_str:
+            main_data, suffix = payload_str.rsplit("|", 1)
+
+            if suffix in data_types:
+                print(f"Entering Receive Data Mode: Detected Data Type '{suffix}'")
+                self.recive_data_mode = True
+                self.recieving_data_type = suffix
+                return True
+
+            return False
+
+        print("Invalid Payload Format")
+        return False  # Invalid payload case
+
     def _parse_encrypted_message(self, payload: bytes):
         """Parses a raw byte-encoded encrypted message."""
 
         
-        if payload.endswith(b"|data"):
-            self.recive_data_mode = True
+        if self._check_if_data_is_incoming(payload):
             return None, None, None
         
         if len(payload) < self.nonce_size:
