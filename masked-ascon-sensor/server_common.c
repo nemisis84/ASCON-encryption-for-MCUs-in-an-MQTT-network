@@ -8,6 +8,7 @@
  #include <string.h>
  #include "pico/stdlib.h"
  #include "btstack.h"
+ #include "ble/att_server.h"
  #include "hardware/adc.h"
  #include "temp_sensor.h"
  #include "server_common.h"
@@ -16,7 +17,7 @@
  #define APP_AD_FLAGS 0x06
  #define ASCON_NONCE_SIZE 16
  #define MAX_PACKET_SIZE 128 // Maximum size of a packet to prevent out-of-memory issues
- #define MAX_PACKETS 15
+
 
  static uint8_t adv_data[] = {
      0x02, BLUETOOTH_DATA_TYPE_FLAGS, APP_AD_FLAGS,
@@ -40,16 +41,11 @@
     printf("\n");
 }
 
-static int counter = 0;
+static uint_fast16_t counter = 0;
 
-typedef struct {
-    uint16_t seq_num;  // Sequence number
-    uint64_t start_time;
-    uint64_t end_time;
-} RTT_Entry;
-
-// Array to store RTT measurements
-RTT_Entry RTT_table[MAX_PACKETS];
+data_entry RTT_table[MAX_PACKETS];
+data_entry encryption_times[MAX_PACKETS];
+data_entry decryption_times[MAX_PACKETS];
 
 // Function to log the start time
 void log_start_time(uint16_t seq_num) {
@@ -70,65 +66,106 @@ void log_end_time(uint16_t seq_num) {
     }
 }
 
-void send_RTT_results() {
-    size_t rtt_table_size = sizeof(RTT_table);
-    printf("sending RTT results\n");
 
-    // Print RTT table for debugging
-    for (int i = 0; i < MAX_PACKETS; i++) {
-        printf("Seq Num: %d, Start Time: %llu, End Time: %llu\n", 
-            RTT_table[i].seq_num, RTT_table[i].start_time, RTT_table[i].end_time);
+typedef enum {
+    TRANSFER_NONE,
+    TRANSFER_RTT,
+    TRANSFER_ENC,
+    TRANSFER_DEC
+} transfer_state_t;
+
+typedef struct {
+    void *data;
+    size_t data_size;
+    size_t bytes_sent;
+    size_t chunk_size;
+    int total_chunks;
+    int current_chunk;
+    transfer_state_t transfer_type;
+} ble_transfer_t;
+
+static ble_transfer_t active_transfer = {0};  
+
+void send_struct_data(void *data, size_t data_size, const char *data_type, transfer_state_t transfer_type) {
+    if (!data || data_size == 0) {
+        printf("❌ Error: No data to send for %s.\n", data_type);
+        return;
     }
 
-    // 🔹 Ensure we don't exceed the BLE MTU size
-    int mtu_size = att_server_get_mtu(con_handle) - 3;  // Subtracting ATT header (3 bytes)
-    int max_chunk_size = (mtu_size > 251) ? 251 : mtu_size;  // Ensure max is 251 bytes
-    size_t chunk_size = (max_chunk_size > 20) ? max_chunk_size : 20; // Default to 20 if MTU is too small
-    
+    printf("📤 Sending %s results (%zu bytes)...\n", data_type, data_size);
 
-    // 🔹 Step 1: Send Associated Data First
+    int mtu_size = att_server_get_mtu(con_handle) - 3;
+    int chunk_size = (mtu_size > 200) ? 200 : ((mtu_size > 20) ? mtu_size : 20);
+
+    active_transfer = (ble_transfer_t){
+        .data = data,
+        .data_size = data_size,
+        .bytes_sent = 0,
+        .chunk_size = chunk_size,
+        .total_chunks = (data_size + chunk_size - 1) / chunk_size,
+        .current_chunk = ((data_size + chunk_size - 1) / chunk_size) - 1,
+        .transfer_type = transfer_type
+    };
+
     char associated_data[50];
-    snprintf(associated_data, sizeof(associated_data), "|%s|data", sensor_ID);
-    size_t associated_len = strlen(associated_data);
-
-    printf("🔹 Sending Associated Data: %s (%zu bytes)\n", associated_data, associated_len);
-    att_server_notify(con_handle, ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_VALUE_HANDLE,
-                      (const uint8_t *)associated_data, associated_len);
-
-    // Small delay to prevent overlapping transmissions
-    sleep_ms(100);
-
-    // 🔹 Step 2: Send RTT Table with Reverse Sequence Numbers
-    size_t bytes_sent = 0;
-    int total_chunks = (rtt_table_size + chunk_size - 1) / chunk_size;  // Calculate number of chunks
-
-    for (int chunk_index = total_chunks - 1; chunk_index >= 0; chunk_index--) {
-        size_t bytes_to_send = (rtt_table_size - bytes_sent > chunk_size) ? chunk_size : (rtt_table_size - bytes_sent);
-
-        // Create buffer with reverse sequence number
-        uint8_t send_buffer[chunk_size + 2];  // Extra 2 bytes for sequence number
-        send_buffer[0] = (uint8_t)chunk_index;  // Reverse sequence number
-        memcpy(send_buffer + 1, ((uint8_t*)RTT_table) + bytes_sent, bytes_to_send);  // Copy RTT payload
-
-        // Debug print the raw bytes being sent
-        printf("🔹 Sending Chunk %d (%zu bytes): ", chunk_index, bytes_to_send + 1);
-        for (size_t i = 0; i < bytes_to_send + 1; i++) {
-            printf("%02X ", send_buffer[i]);
-        }
-        printf("\n");
-
-        // ✅ Send chunk
-        att_server_notify(con_handle, ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_VALUE_HANDLE,
-                          send_buffer, bytes_to_send + 1);
-
-        bytes_sent += bytes_to_send;
-        sleep_ms(50);  // Small delay to prevent BLE buffer overflow
+    snprintf(associated_data, sizeof(associated_data), "|%s|%s", sensor_ID, data_type);
+    if (att_server_notify(con_handle, ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_VALUE_HANDLE,
+                          (const uint8_t *)associated_data, strlen(associated_data)) != 0) {
+        printf("❌ BLE notification failed for associated data.\n");
+        return;
     }
 
-    printf("✅ RTT results sent successfully (%zu bytes in %d chunks).\n", rtt_table_size, total_chunks);
-    sleep_ms(1000);
-    abort();
+    sleep_ms(50);
+    att_server_request_can_send_now_event(con_handle);
 }
+
+void send_next_chunk() {
+    if (active_transfer.bytes_sent >= active_transfer.data_size) {
+        printf("✅ Completed %s transfer (%zu bytes in %d chunks)\n",
+               (active_transfer.transfer_type == TRANSFER_RTT) ? "RTT" :
+               (active_transfer.transfer_type == TRANSFER_ENC) ? "ENC" : "DEC",
+               active_transfer.data_size, active_transfer.total_chunks);
+
+        // Move to the next struct after RTT -> ENC -> DEC
+        if (active_transfer.transfer_type == TRANSFER_RTT) {
+            send_struct_data(encryption_times, sizeof(encryption_times), "ENC", TRANSFER_ENC);
+        } else if (active_transfer.transfer_type == TRANSFER_ENC) {
+            send_struct_data(decryption_times, sizeof(decryption_times), "DEC", TRANSFER_DEC);
+        } else {
+            printf("✅ All BLE transfers complete!\n");
+            abort();
+        }
+        return;
+    }
+
+    size_t bytes_to_send = (active_transfer.data_size - active_transfer.bytes_sent > active_transfer.chunk_size)
+                               ? active_transfer.chunk_size
+                               : (active_transfer.data_size - active_transfer.bytes_sent);
+
+    uint8_t send_buffer[bytes_to_send + 1];
+    send_buffer[0] = (uint8_t)active_transfer.current_chunk;
+    memcpy(send_buffer + 1, ((uint8_t *)active_transfer.data) + active_transfer.bytes_sent, bytes_to_send);
+
+    size_t entry_index = active_transfer.bytes_sent / sizeof(data_entry);
+    if (entry_index < active_transfer.data_size / sizeof(data_entry)) {
+        data_entry *entry = &((data_entry *)active_transfer.data)[entry_index];
+        printf("🔹 Struct Entry %zu: Seq Num: %u, Start Time: %llu, End Time: %llu\n",
+               entry_index, entry->seq_num, entry->start_time, entry->end_time);
+    }
+
+    int status = att_server_notify(con_handle, ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_VALUE_HANDLE,
+                                   send_buffer, bytes_to_send + 1);
+
+    if (status == 0) {  // ✅ Success
+        active_transfer.bytes_sent += bytes_to_send;
+        active_transfer.current_chunk--;
+    } else {  // ❌ Failed
+        printf("❌ BLE notification failed, retrying...\n");
+    }
+
+    att_server_request_can_send_now_event(con_handle);
+}
+
 
 
 
@@ -140,11 +177,7 @@ void send_RTT_results() {
     char associated_data[50];
     snprintf(associated_data, sizeof(associated_data), "|%s|%d", sensor_ID, counter);
 
-    uint64_t start_time = time_us_64();  // ⏱️ Start time
-    encrypt(current_temp, encrypted_temp, &encrypted_len, nonce, associated_data);
-    uint64_t end_time = time_us_64();  // ⏱️ End time
-    printf("🔹 Encryption time: %llu µs\n", end_time - start_time);
-
+    encrypt(current_temp, encrypted_temp, &encrypted_len, nonce, associated_data, counter);
 
     size_t ad_len = strlen(associated_data);
     // Create final message: Encrypted data + nonce + AD
@@ -205,14 +238,16 @@ void send_RTT_results() {
              le_notification_enabled = 0;
              break;
          case ATT_EVENT_CAN_SEND_NOW:
-            if (counter < MAX_PACKETS){
-                send_encrypted_temperature();
-            }
-            else {
-                printf("⚠️ Reached MAX_PACKETS (%d), sending RTT results...\n", MAX_PACKETS);
-                sleep_ms(5000);
-                send_RTT_results();
-            }
+             if (counter < MAX_PACKETS) {
+                 send_encrypted_temperature();
+             } else {
+                 if (active_transfer.data == NULL) {  
+                     printf("⚠️ Reached MAX_PACKETS (%d), starting data transfer...\n", MAX_PACKETS);
+                     send_struct_data(RTT_table, sizeof(RTT_table), "RTT", TRANSFER_RTT);
+                 } else {
+                     send_next_chunk();
+                 }
+             }
              break;
          default:
              break;
@@ -238,12 +273,10 @@ void recieve_encrypted_data(uint8_t *received_data, size_t received_len) {
         printf("Received packet is too large! Rejecting.\n");
         return;
     }
-    uint64_t start_time = time_us_64();  // ⏱️ Start time
+    
     int status = decrypt(received_data, received_len, &decrypted_data, &decrypted_len, &sequence_number);
 
     if (status == 0) {
-        uint64_t end_time = time_us_64();  // ⏱️ End time
-        printf("🔹 Decryption time: %llu µs\n", end_time - start_time);
         uint16_t temperature;
         memcpy(&temperature, decrypted_data, sizeof(uint16_t));
 
