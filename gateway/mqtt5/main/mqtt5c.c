@@ -91,10 +91,9 @@
      }
  }
 
- void mqtt_ble_forward(const char *topic, int topic_len, const char *data) {
+ void mqtt_ble_forward(const char *topic, int topic_len, const char *data, int data_len) {
     
-    size_t data_len = strlen(data);
-    if (topic == NULL || data == NULL || topic_len <= 0 || data_len == 0) {
+    if (topic == NULL || data == NULL || topic_len <= 0 || data_len <= 0) {
         ESP_LOGE(TAG, "❌ Invalid input to ble_forward");
         return;
     }
@@ -108,15 +107,15 @@
     strncpy(clean_topic, topic, topic_len);
     clean_topic[topic_len] = '\0';  // Ensure null termination
 
-    // Check if it ends with "/PICO"
     if (topic_len < 5 || strcmp(clean_topic + topic_len - 5, "/PICO") != 0) {
         ESP_LOGI(TAG, "🔹 Ignoring message, not for PICO.");
         return;
     }
-    
-    ESP_LOGI(TAG, "🔹 Forwarding MQTT message to BLE: %s", data);
+
+    ESP_LOGI(TAG, "🔹 Forwarding MQTT message to BLE (%d bytes)", data_len);
     ble_forward((uint8_t *)data, data_len);
 }
+
 
 
  
@@ -178,10 +177,7 @@
          ESP_LOGI(TAG, "TOPIC=%.*s", event->topic_len, event->topic);
          ESP_LOGI(TAG, "DATA=%.*s", event->data_len, event->data);
      
-         // ✅ Forward message to BLE
-         char mqtt_msg[256];  // Ensure enough space for the message
-         snprintf(mqtt_msg, sizeof(mqtt_msg), "%.*s", event->data_len, event->data);
-         mqtt_ble_forward(event->topic ,event->topic_len ,mqtt_msg);  // Forward to BLE
+         mqtt_ble_forward(event->topic, event->topic_len, event->data, event->data_len);
          break;
      case MQTT_EVENT_ERROR:
          ESP_LOGI(TAG, "MQTT_EVENT_ERROR");

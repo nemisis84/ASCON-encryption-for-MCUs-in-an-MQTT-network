@@ -12,7 +12,7 @@
 #include "pico/stdlib.h" 
 #include "ascon/aead-masked.h"
 #include "encryption.h"
-
+#include "experiment_settings.h"
 #include "server_common.h"
 
 #define HEARTBEAT_PERIOD_MS 1000 //Heartbeat every 1 second
@@ -24,8 +24,8 @@ static void heartbeat_handler(struct btstack_timer_source *ts) {
     static uint32_t counter = 0;
     counter++;
 
-    // Update the temp every 5s
-    if (counter % 1 == 0) {
+    // Update the temp every TRANSMISSION_INTERVAL_MS
+    if (counter % TRANSMISSION_INTERVAL_MS == 0) {
         poll_temp(); // Poll the temperature sensor
         if (le_notification_enabled) { // If BLE notifications are enabled
             att_server_request_can_send_now_event(con_handle); // Send the temperature value
