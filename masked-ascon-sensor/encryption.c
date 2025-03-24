@@ -5,45 +5,44 @@
 #include "encryption.h"
 #include "ascon/random.h"
 #include "server_common.h"
+#include "pico/time.h"
+
 
 #define ASCON_KEY_SIZE 16
 #define ASCON_NONCE_SIZE 16
 #define ASCON_TAG_SIZE 16
 
 
+#define AD_PATTERN "|TEMP-"
+#define AD_PATTERN_LEN 6
+
 static ascon_random_state_t prng_state;  // 🔹 Persistent PRNG state
 uint8_t nonce[ASCON_NONCE_SIZE];
 
 void log_start_decryption_time(uint16_t seq_num) {
-    if (seq_num >= MAX_PACKETS) return;  // Avoid overflow
+    if (seq_num >= MAX_PACKETS || seq_num <0) return;
 
     decryption_times[seq_num].seq_num = seq_num;
     decryption_times[seq_num].start_time = (uint64_t)time_us_64();  // Example with seconds (use microseconds for precision)
 }
 
 void log_end_decryption_time(uint16_t seq_num) {
-    if (seq_num >= MAX_PACKETS) return;  // Avoid overflow
-    if (seq_num < 0) {
-        decryption_times[seq_num].end_time = 0;
-    } else {
-        decryption_times[seq_num].end_time = (uint64_t)time_us_64();  // Example with seconds (use microseconds for precision)
-    }
+    if (seq_num >= MAX_PACKETS || seq_num <0) return;
+    
+    decryption_times[seq_num].end_time = (uint64_t)time_us_64();  // Example with seconds (use microseconds for precision)
 }
 
 void log_start_encryption_time(uint16_t seq_num) {
-    if (seq_num >= MAX_PACKETS) return;  // Avoid overflow
+    if (seq_num >= MAX_PACKETS || seq_num <0) return;
 
     encryption_times[seq_num].seq_num = seq_num;
     encryption_times[seq_num].start_time = (uint64_t)time_us_64();  // Example with seconds (use microseconds for precision)
 }
 
 void log_end_encryption_time(uint16_t seq_num) {
-    if (seq_num >= MAX_PACKETS) return;  // Avoid overflow
-    if (seq_num < 0) {
-        encryption_times[seq_num].end_time = 0;
-    } else {
-        encryption_times[seq_num].end_time = (uint64_t)time_us_64();  // Example with seconds (use microseconds for precision)
-    }
+    if (seq_num >= MAX_PACKETS || seq_num <0) return;
+    
+    encryption_times[seq_num].end_time = (uint64_t)time_us_64();  // Example with seconds (use microseconds for precision)
 }
 
 void init_prng() {
@@ -64,17 +63,19 @@ void initialize_masked_key() {
 }
 
 
-void encrypt(uint16_t data, uint8_t *output, size_t *output_len, uint8_t *nonce, char *associated_data, uint16_t counter) {
-    uint8_t plaintext[sizeof(data)];
-    memcpy(plaintext, &data, sizeof(data));
+void encrypt(const void *data, size_t data_size, uint8_t *output, size_t *output_len,
+    uint8_t *nonce, const char *associated_data, uint16_t counter) {
 
     size_t ad_len = strlen(associated_data);
-
+    printf("Bytes to encrypt: %zu\n", data_size);
     generate_nonce(nonce);
     printf("counter: %d\n", counter);
+
     log_start_encryption_time(counter);
-    ascon128a_masked_aead_encrypt(output, output_len, plaintext, sizeof(data),
-                          (char *)associated_data, ad_len, nonce, &masked_key);
+    ascon128a_masked_aead_encrypt(output, output_len,
+    (const uint8_t *)data, data_size,
+    (const uint8_t *)associated_data, ad_len,
+    nonce, &masked_key);
     log_end_encryption_time(counter);
 }
 
@@ -88,9 +89,9 @@ int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_
 
     // 🔹 Locate the start of Associated Data (AD)
     size_t ad_start_index = 0;
-    const char *ad_pattern = "|TEMP-";  // Look for AD marker
+
     for (size_t i = received_len - 1; i >= ASCON_NONCE_SIZE; i--) {
-        if (memcmp(received_data + i, ad_pattern, strlen(ad_pattern)) == 0) {
+        if (memcmp(received_data + i, AD_PATTERN, AD_PATTERN_LEN) == 0) {
             ad_start_index = i;
             break;
         }
@@ -109,11 +110,14 @@ int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_
 
     // 🔹 Parse Associated Data: Format "|sensor_id|seq_number"
     char received_sensor_id[20];  // Buffer for sensor ID
-    
-    if (sscanf(extracted_ad, "|%[^|]|%d", received_sensor_id, sequence_number) != 2) {
+
+    int temp_seq_num = 0;
+    if (sscanf(extracted_ad, "|%[^|]|%d", received_sensor_id, &temp_seq_num) != 2) {
         printf("❌ Error: Failed to parse Associated Data.\n");
         return -1;
     }
+    *sequence_number = (uint16_t)temp_seq_num;
+    
 
     // 🔹 Validate Sensor ID
     if (strcmp(received_sensor_id, sensor_ID) != 0) {
@@ -137,7 +141,6 @@ int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_
         return -1;
     }
 
-    printf("✅ Extracted Associated Data: %s\n", extracted_ad);
     printf("✅ Parsed Sensor ID: %s, Sequence Number: %d\n", received_sensor_id, *sequence_number);
 
     // 🔹 Perform Decryption
@@ -154,6 +157,7 @@ int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_
         return 0;
     } else {
         log_end_decryption_time(-1);
+        log_end_time(-1);
         free(decrypted_data);
         return -1;
     }

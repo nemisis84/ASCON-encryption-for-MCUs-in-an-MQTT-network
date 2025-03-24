@@ -13,10 +13,11 @@
  #include "temp_sensor.h"
  #include "server_common.h"
  #include "encryption.h"
+ #include "experiment_settings.h"
  
  #define APP_AD_FLAGS 0x06
  #define ASCON_NONCE_SIZE 16
- #define MAX_PACKET_SIZE 128 // Maximum size of a packet to prevent out-of-memory issues
+ #define MAX_PACKET_SIZE 256 // Maximum size of a packet to prevent out-of-memory issues
 
 
  static uint8_t adv_data[] = {
@@ -28,7 +29,7 @@
  
  int le_notification_enabled;
  hci_con_handle_t con_handle;
- uint16_t current_temp;
+ temperatures current_temps;
  
  uint8_t sensor_ID[] = "TEMP-1";
  
@@ -49,7 +50,7 @@ data_entry decryption_times[MAX_PACKETS];
 
 // Function to log the start time
 void log_start_time(uint16_t seq_num) {
-    if (seq_num >= MAX_PACKETS) return;  // Avoid overflow
+    if (seq_num >= MAX_PACKETS || seq_num <0) return;
 
     RTT_table[seq_num].seq_num = seq_num;
     RTT_table[seq_num].start_time = (uint64_t)time_us_64();  // Example with seconds (use microseconds for precision)
@@ -57,13 +58,9 @@ void log_start_time(uint16_t seq_num) {
 
 // Function to log the end time
 void log_end_time(uint16_t seq_num) {
-    if (seq_num >= MAX_PACKETS) return;  // Avoid overflow
+    if (seq_num >= MAX_PACKETS || seq_num <0) return;
 
-    if (seq_num < 0) {
-        RTT_table[seq_num].end_time = 0;
-    } else {
-        RTT_table[seq_num].end_time = (uint64_t)time_us_64();
-    }
+    RTT_table[seq_num].end_time = (uint64_t)time_us_64();
 }
 
 
@@ -85,6 +82,24 @@ typedef struct {
 } ble_transfer_t;
 
 static ble_transfer_t active_transfer = {0};  
+
+void print_all_results() {
+    printf("\n📊 RTT Results:\n");
+    for (int i = 0; i < MAX_PACKETS; i++) {
+        printf("RTT %2d → Start: %llu, End: %llu\n", i, RTT_table[i].start_time, RTT_table[i].end_time);
+    }
+
+    printf("\n🔐 Encryption Times:\n");
+    for (int i = 0; i < MAX_PACKETS; i++) {
+        printf("ENC %2d → Start: %llu, End: %llu\n", i, encryption_times[i].start_time, encryption_times[i].end_time);
+    }
+
+    printf("\n🔓 Decryption Times:\n");
+    for (int i = 0; i < MAX_PACKETS; i++) {
+        printf("DEC %2d → Start: %llu, End: %llu\n", i, decryption_times[i].start_time, decryption_times[i].end_time);
+    }
+}
+
 
 void send_struct_data(void *data, size_t data_size, const char *data_type, transfer_state_t transfer_type) {
     if (!data || data_size == 0) {
@@ -146,13 +161,6 @@ void send_next_chunk() {
     send_buffer[0] = (uint8_t)active_transfer.current_chunk;
     memcpy(send_buffer + 1, ((uint8_t *)active_transfer.data) + active_transfer.bytes_sent, bytes_to_send);
 
-    size_t entry_index = active_transfer.bytes_sent / sizeof(data_entry);
-    if (entry_index < active_transfer.data_size / sizeof(data_entry)) {
-        data_entry *entry = &((data_entry *)active_transfer.data)[entry_index];
-        printf("🔹 Struct Entry %zu: Seq Num: %u, Start Time: %llu, End Time: %llu\n",
-               entry_index, entry->seq_num, entry->start_time, entry->end_time);
-    }
-
     int status = att_server_notify(con_handle, ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_VALUE_HANDLE,
                                    send_buffer, bytes_to_send + 1);
 
@@ -171,31 +179,30 @@ void send_next_chunk() {
 
  void send_encrypted_temperature() {
     log_start_time(counter);
-    uint8_t encrypted_temp[32];  // Buffer for encrypted data
+
+    uint8_t encrypted_payload[128];  // supports large payload + tag
     size_t encrypted_len;
     uint8_t nonce[ASCON_NONCE_SIZE];
+
     char associated_data[50];
     snprintf(associated_data, sizeof(associated_data), "|%s|%d", sensor_ID, counter);
 
-    encrypt(current_temp, encrypted_temp, &encrypted_len, nonce, associated_data, counter);
+    encrypt(&current_temps, sizeof(current_temps), encrypted_payload, &encrypted_len,
+            nonce, associated_data, counter);
 
     size_t ad_len = strlen(associated_data);
-    // Create final message: Encrypted data + nonce + AD
-    uint8_t final_message[32 + ASCON_NONCE_SIZE + 50] = {0};  // ✅ Explicitly zero-out buffer
-    memcpy(final_message, encrypted_temp, encrypted_len);
+    uint8_t final_message[128 + ASCON_NONCE_SIZE + 50] = {0};
+    memcpy(final_message, encrypted_payload, encrypted_len);
     memcpy(final_message + encrypted_len, nonce, ASCON_NONCE_SIZE);
     memcpy(final_message + encrypted_len + ASCON_NONCE_SIZE, associated_data, ad_len);
-    printf("⚠️ Nonce for Seq Num 4: ");
-    pretty_print("Nonce", nonce, ASCON_NONCE_SIZE);
 
-    
     size_t final_message_len = encrypted_len + ASCON_NONCE_SIZE + ad_len;
+
     pretty_print("Sending encrypted temperature\n", final_message, final_message_len);
-    int mtu_size = att_server_get_mtu(con_handle);
-    printf("🔹 BLE MTU: %d, Packet Size: %zu\n", mtu_size, final_message_len);
 
     int status = att_server_notify(con_handle, ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_VALUE_HANDLE,
         final_message, final_message_len);
+    
     if (status != 0) {
         printf("❌ BLE notification failed! Status: %d, Seq Num: %d\n", status, counter);
     } else {
@@ -243,6 +250,7 @@ void send_next_chunk() {
              } else {
                  if (active_transfer.data == NULL) {  
                      printf("⚠️ Reached MAX_PACKETS (%d), starting data transfer...\n", MAX_PACKETS);
+                     print_all_results();
                      send_struct_data(RTT_table, sizeof(RTT_table), "RTT", TRANSFER_RTT);
                  } else {
                      send_next_chunk();
@@ -255,36 +263,45 @@ void send_next_chunk() {
  }
  
 
-uint16_t att_read_callback(hci_con_handle_t connection_handle, uint16_t att_handle, uint16_t offset, uint8_t * buffer, uint16_t buffer_size) {
+ uint16_t att_read_callback(hci_con_handle_t connection_handle, uint16_t att_handle,
+    uint16_t offset, uint8_t *buffer, uint16_t buffer_size) {
     UNUSED(connection_handle);
 
-    if (att_handle == ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_VALUE_HANDLE){
-        return att_read_callback_handle_blob((const uint8_t *)&current_temp, sizeof(current_temp), offset, buffer, buffer_size);
+    if (att_handle == ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_VALUE_HANDLE) {
+    return att_read_callback_handle_blob((const uint8_t *)&current_temps,
+                        sizeof(current_temps), offset,
+                        buffer, buffer_size);
     }
     return 0;
 }
 
 void recieve_encrypted_data(uint8_t *received_data, size_t received_len) {
+    printf("📩 Received encrypted data (%zu bytes)\n", received_len);
     uint8_t *decrypted_data = NULL;
     size_t decrypted_len = 0;
-    uint16_t sequence_number;
+    uint16_t sequence_number = 0;
 
     if (received_len > MAX_PACKET_SIZE) {
         printf("Received packet is too large! Rejecting.\n");
         return;
     }
     
+    printf("🔍 Calling decrypt...\n");
     int status = decrypt(received_data, received_len, &decrypted_data, &decrypted_len, &sequence_number);
+    printf("🔍 Decrypt returned status: %d\n", status);
 
     if (status == 0) {
-        uint16_t temperature;
-        memcpy(&temperature, decrypted_data, sizeof(uint16_t));
-
-        printf("✅ Decrypted Temperature: %.2f°C\n", temperature / 100.0);
-
-        free(decrypted_data);  // Prevent memory leak
+        int num_entries = decrypted_len / sizeof(uint16_t);
+        uint16_t *temperatures = (uint16_t *)decrypted_data;
+        
+        printf("✅ Decrypted Temperatures: ");
+        for (int i = 0; i < num_entries; i++) {
+            printf("%.2f°C ", temperatures[i] / 100.0);
+        }
+        printf("\n");
+        
+        free(decrypted_data);
     } else {
-        log_end_time(-1);
         printf("Decryption failed! Invalid or tampered message.\n");
     }
 }
@@ -317,6 +334,8 @@ int att_write_callback(hci_con_handle_t connection_handle, uint16_t att_handle, 
         }
         return 0;
     }
+
+    return 0;
 }
 
 
@@ -324,6 +343,7 @@ void poll_temp(void) {
     adc_select_input(ADC_CHANNEL_TEMPSENSOR);
     uint32_t raw32 = adc_read();
     const uint32_t bits = 12;
+    uint16_t current_temp;
 
     // Scale raw reading to 16 bit value using a Taylor expansion (for 8 <= bits <= 16)
     uint16_t raw16 = raw32 << (16 - bits) | raw32 >> (2 * bits - 16);
@@ -335,10 +355,14 @@ void poll_temp(void) {
     // The temperature sensor measures the Vbe voltage of a biased bipolar diode, connected to the fifth ADC channel
     // Typically, Vbe = 0.706V at 27 degrees C, with a slope of -1.721mV (0.001721) per degree. 
     float deg_c = 27 - (reading - 0.706) / 0.001721;
-    current_temp = deg_c * 100;
+    current_temp = (uint16_t)(deg_c * 100);
     printf("Write temp %.2f degc\n", deg_c);
 
-    uint8_t encrypted_temp[32];  // Buffer for encrypted data
-    size_t encrypted_len;
-    uint8_t nonce[ASCON_NONCE_SIZE];
+    // Shift left to make room for new value
+    for (int i = 0; i < PAYLOAD_MULTIPLE - 1; i++) {
+        current_temps.values[i] = current_temps.values[i + 1];
+    }
+
+    // Store latest value
+    current_temps.values[PAYLOAD_MULTIPLE - 1] = current_temp;
 }
