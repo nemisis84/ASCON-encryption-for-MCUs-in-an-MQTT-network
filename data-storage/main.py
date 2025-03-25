@@ -45,9 +45,12 @@ class SecureMQTTClient:
         if not self.recive_data_mode:
             try:
                 payload = msg.payload
-                print(f"\nEncrypted message received: {payload}")
+                print(f"\nEncrypted message received:{payload.hex()}")
                 ciphertext, nonce, associated_data = self._parse_encrypted_message(
                 payload)
+                print("Parsed ciphertext+tag:", ciphertext.hex())
+                print("Parsed nonce:", nonce.hex())
+                print("Parsed associated data:", associated_data.hex())
                 if self.recive_data_mode:
                     print("Recive data mode")
                     return
@@ -74,7 +77,7 @@ class SecureMQTTClient:
         else:
             try:
                 payload = msg.payload
-                print(f"Recived data: {payload}")
+                print(f"Recived data: {payload.hex()}")
                 sequence_number = payload[0]
                 # The rest of the bytes are the payload
                 self.received_bytes += payload[1:]
