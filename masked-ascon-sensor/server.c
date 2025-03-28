@@ -10,7 +10,6 @@
 #include "pico/btstack_cyw43.h" 
 #include "hardware/adc.h" // Required for temperature sensor
 #include "pico/stdlib.h" 
-#include "ascon/aead-masked.h"
 #include "encryption.h"
 #include "experiment_settings.h"
 #include "server_common.h"
@@ -48,8 +47,7 @@ int main() {
 
     printf("Starting ASCON Masked AEAD encryption test...\n");
     // Initialize the PRNG
-    init_prng();
-    initialize_masked_key();
+    init_primitives();
 
 
     // initialize CYW43 driver architecture (will enable BT if/because CYW43_ENABLE_BLUETOOTH == 1)

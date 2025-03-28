@@ -276,7 +276,6 @@ void send_next_chunk() {
 }
 
 void recieve_encrypted_data(uint8_t *received_data, size_t received_len) {
-    printf("📩 Received encrypted data (%zu bytes)\n", received_len);
     uint8_t *decrypted_data = NULL;
     size_t decrypted_len = 0;
     uint16_t sequence_number = 0;
@@ -286,11 +285,16 @@ void recieve_encrypted_data(uint8_t *received_data, size_t received_len) {
         return;
     }
     
-    printf("🔍 Calling decrypt...\n");
     int status = decrypt(received_data, received_len, &decrypted_data, &decrypted_len, &sequence_number);
-    printf("🔍 Decrypt returned status: %d\n", status);
 
     if (status == 0) {
+        if (decrypted_len % sizeof(uint16_t) != 0) {
+            printf("❌ Decrypted data not aligned. Length = %zu\n", decrypted_len);
+            free(decrypted_data);
+            return;
+        }
+        
+        
         int num_entries = decrypted_len / sizeof(uint16_t);
         uint16_t *temperatures = (uint16_t *)decrypted_data;
         

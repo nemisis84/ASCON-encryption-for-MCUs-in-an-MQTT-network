@@ -33,26 +33,52 @@ project(masked-ascon-sensor C CXX ASM)
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
 
+# User-selectable encryption mode (string)
+set(SELECTED_ENCRYPTION_MODE "ASCON_MASKED" CACHE STRING "Selected encryption mode")
+set_property(CACHE SELECTED_ENCRYPTION_MODE PROPERTY STRINGS ASCON_MASKED ASCON_UNMASKED AES_MASKED NONE)
 
-set(ASCON_PATH ${CMAKE_CURRENT_LIST_DIR}/libs/ascon-suite)
+# Determine paths, sources, and numeric ID for compiler
+if(SELECTED_ENCRYPTION_MODE STREQUAL "ASCON_MASKED")
+    set(ENCRYPTION_MODE_ID 1)
+    set(ASCON_PATH ${CMAKE_CURRENT_LIST_DIR}/libs/ascon-suite)
+    set(ASCON_INCLUDE ${ASCON_PATH}/include)
+    set(ASCON_SOURCES "")
+    add_subdirectory(${ASCON_PATH} EXCLUDE_FROM_ALL)
+    list(APPEND ENCRYPTION_SOURCES masked_ascon_encryption.c)
 
-add_subdirectory(${ASCON_PATH} EXCLUDE_FROM_ALL)
-# Add executable. Default name is the project name, version 0.1
+elseif(SELECTED_ENCRYPTION_MODE STREQUAL "ASCON_UNMASKED")
+    set(ENCRYPTION_MODE_ID 2)
+    set(ASCON_PATH ${CMAKE_CURRENT_LIST_DIR}/libs/ascon/armv6m)
+    file(GLOB ASCON_SOURCES ${ASCON_PATH}/*.c)
+    set(ASCON_INCLUDE ${ASCON_PATH})
 
-# Standalone example that reads from the on board temperature sensor and sends notifications via BLE
-# Flashes slowly each second to show it's running
+elseif(SELECTED_ENCRYPTION_MODE STREQUAL "AES_MASKED")
+    set(ENCRYPTION_MODE_ID 3)
+
+elseif(SELECTED_ENCRYPTION_MODE STREQUAL "NONE")
+    set(ENCRYPTION_MODE_ID 4)
+
+else()
+    message(FATAL_ERROR "Invalid SELECTED_ENCRYPTION_MODE: ${SELECTED_ENCRYPTION_MODE}")
+endif()
+
+
+
 add_executable(masked-ascon-sensor
     server.c server_common.c
     encryption.c
-    )
+    ${ASCON_SOURCES}
+    ${ENCRYPTION_SOURCES}
+)
 
-pico_set_program_name(masked-ascon-sensor "masked-ascon-sensor")
-pico_set_program_version(masked-ascon-sensor "0.1")
+target_compile_definitions(masked-ascon-sensor PRIVATE SELECTED_ENCRYPTION_MODE=${ENCRYPTION_MODE_ID})
 
-# Modify the below lines to enable/disable output over UART/USB
-pico_enable_stdio_uart(masked-ascon-sensor 0)
 pico_enable_stdio_usb(masked-ascon-sensor 1)
 
+target_include_directories(masked-ascon-sensor PRIVATE
+    ${CMAKE_CURRENT_LIST_DIR}
+    ${ASCON_INCLUDE}
+)
 
 target_link_libraries(masked-ascon-sensor
     pico_stdlib
@@ -60,12 +86,14 @@ target_link_libraries(masked-ascon-sensor
     pico_btstack_cyw43
     pico_cyw43_arch_none
     hardware_adc
-    ascon
-    )
-target_include_directories(masked-ascon-sensor PRIVATE
-    ${CMAKE_CURRENT_LIST_DIR} # For btstack config
-    ${ASCON_PATH}/include # For ASCON headers
-    )
+    pico_rand
+)
+
+if(SELECTED_ENCRYPTION_MODE STREQUAL "ASCON_MASKED")
+    target_link_libraries(masked-ascon-sensor ascon)
+endif()
+
+
 pico_btstack_make_gatt_header(masked-ascon-sensor PRIVATE "${CMAKE_CURRENT_LIST_DIR}/temp_sensor.gatt")
 
 pico_add_extra_outputs(masked-ascon-sensor)

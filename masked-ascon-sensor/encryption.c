@@ -1,11 +1,31 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include "ascon/aead-masked.h"
 #include "encryption.h"
-#include "ascon/random.h"
 #include "server_common.h"
 #include "pico/time.h"
+#include "pico/rand.h"
+
+
+#define ENCRYPTION_ASCON_MASKED   1
+#define ENCRYPTION_ASCON_UNMASKED 2
+#define ENCRYPTION_AES_MASKED     3
+#define ENCRYPTION_NONE           4
+
+
+#if !defined(SELECTED_ENCRYPTION_MODE)
+#define SELECTED_ENCRYPTION_MODE ENCRYPTION_ASCON_UNMASKED
+#endif
+
+#if SELECTED_ENCRYPTION_MODE == ENCRYPTION_ASCON_MASKED
+#include "masked_ascon_encryption.h"
+#elif SELECTED_ENCRYPTION_MODE == ENCRYPTION_ASCON_UNMASKED
+#include "crypto_aead.h"
+#endif
+
+
+static unsigned char key_128[16] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 
+    0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F };
 
 
 #define ASCON_KEY_SIZE 16
@@ -16,8 +36,16 @@
 #define AD_PATTERN "|TEMP-"
 #define AD_PATTERN_LEN 6
 
-static ascon_random_state_t prng_state;  // 🔹 Persistent PRNG state
 uint8_t nonce[ASCON_NONCE_SIZE];
+
+
+void init_primitives() {
+    #if SELECTED_ENCRYPTION_MODE == ENCRYPTION_ASCON_MASKED
+        init_prng();
+        initialize_masked_key(key_128);
+    #endif
+    }
+    
 
 void log_start_decryption_time(uint16_t seq_num) {
     if (seq_num >= MAX_PACKETS || seq_num <0) return;
@@ -45,21 +73,12 @@ void log_end_encryption_time(uint16_t seq_num) {
     encryption_times[seq_num].end_time = (uint64_t)time_us_64();  // Example with seconds (use microseconds for precision)
 }
 
-void init_prng() {
-    ascon_random_init(&prng_state);
-}
 
 void generate_nonce(uint8_t *nonce) {
-    ascon_random_fetch(&prng_state, nonce, 16);
-}
-
-static unsigned char key_128[16] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 
-    0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F };
-
-static ascon_masked_key_128_t masked_key;
-
-void initialize_masked_key() {
-    ascon_masked_key_128_init(&masked_key, key_128);
+    // ascon_random_fetch(&prng_state, nonce, 16);
+    rng_128_t rand128;
+    get_rand_128(&rand128);
+    memcpy(nonce, &rand128, sizeof(rng_128_t));
 }
 
 
@@ -67,15 +86,38 @@ void encrypt(const void *data, size_t data_size, uint8_t *output, size_t *output
     uint8_t *nonce, const char *associated_data, uint16_t counter) {
 
     size_t ad_len = strlen(associated_data);
-    printf("Bytes to encrypt: %zu\n", data_size);
+
     generate_nonce(nonce);
-    printf("counter: %d\n", counter);
 
     log_start_encryption_time(counter);
-    ascon128a_masked_aead_encrypt(output, output_len,
-    (const uint8_t *)data, data_size,
-    (const uint8_t *)associated_data, ad_len,
-    nonce, &masked_key);
+    switch (SELECTED_ENCRYPTION_MODE) {
+        case ENCRYPTION_ASCON_MASKED:
+            masked_ascon128a_encrypt(output, output_len,
+                (const uint8_t *)data, data_size,
+                (const uint8_t *)associated_data, ad_len,
+                nonce);
+            break;
+        case ENCRYPTION_ASCON_UNMASKED:
+            unsigned long long clen = 0;
+            crypto_aead_encrypt(output, &clen,
+                (const uint8_t *)data, data_size,
+                (const uint8_t *)associated_data, ad_len,
+                NULL, nonce, key_128);
+            *output_len = (size_t)clen;
+            printf("Encrypted data: ");
+            for (size_t i = 0; i < *output_len; i++) {
+                printf("%02X ", output[i]);
+            }
+            printf("\n");
+            printf("Nonce: ");
+            for (int i = 0; i < ASCON_NONCE_SIZE; i++) {
+                printf("%02X ", nonce[i]);
+            }
+            printf("\n");
+            printf("Associated Data: %s\n", associated_data);
+
+        break;
+    }
     log_end_encryption_time(counter);
 }
 
@@ -130,25 +172,39 @@ int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_
     uint8_t received_nonce[ASCON_NONCE_SIZE];
     memcpy(received_nonce, received_data + nonce_start_index, ASCON_NONCE_SIZE);
 
-    // 🔹 Extract Ciphertext (Everything before Nonce)
     size_t ciphertext_len = nonce_start_index;
-    uint8_t *ciphertext = received_data;  // Ciphertext is at the start of received_data
+    uint8_t *ciphertext = received_data;
 
-    // 🔹 Allocate Memory for Decryption
     uint8_t *decrypted_data = (uint8_t *)malloc(ciphertext_len);
+
     if (!decrypted_data) {
-        printf("❌ Memory allocation failed!\n");
+        printf("❌ malloc failed!\n");
         return -1;
     }
 
-    printf("✅ Parsed Sensor ID: %s, Sequence Number: %d\n", received_sensor_id, *sequence_number);
+    int status = -1;
 
-    // 🔹 Perform Decryption
-    log_start_decryption_time(*sequence_number);
-    int status = ascon128a_masked_aead_decrypt(
-        decrypted_data, output_len, ciphertext, ciphertext_len,
-        (uint8_t *)extracted_ad, ad_len, received_nonce, &masked_key
-    );
+
+    switch (SELECTED_ENCRYPTION_MODE) {
+        case ENCRYPTION_ASCON_MASKED:
+            log_start_decryption_time(*sequence_number);
+            status = masked_ascon128a_decrypt(
+                decrypted_data, output_len,
+                ciphertext, ciphertext_len,
+                (uint8_t *)extracted_ad, ad_len,
+                received_nonce);
+            break;
+
+        case ENCRYPTION_ASCON_UNMASKED:
+            log_start_decryption_time(*sequence_number);
+            status = crypto_aead_decrypt(decrypted_data, output_len,
+                NULL, ciphertext, ciphertext_len,
+                (uint8_t *)extracted_ad, ad_len,
+                received_nonce, key_128);
+            break;
+        default:
+            break;
+    }
 
     if (status >= 0) {
         *output = decrypted_data;
