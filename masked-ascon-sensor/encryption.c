@@ -175,8 +175,12 @@ int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_
     size_t ciphertext_len = nonce_start_index;
     uint8_t *ciphertext = received_data;
 
-    uint8_t decrypted_data = (uint8_t *)malloc(ciphertext_len);
-    if (!decrypted_data) return -1;
+    uint8_t *decrypted_data = (uint8_t *)malloc(ciphertext_len);
+
+    if (!decrypted_data) {
+        printf("❌ malloc failed!\n");
+        return -1;
+    }
 
     int status = -1;
 
