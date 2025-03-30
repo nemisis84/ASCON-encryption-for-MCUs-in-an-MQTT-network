@@ -12,8 +12,9 @@
  #include "hardware/adc.h"
  #include "temp_sensor.h"
  #include "server_common.h"
- #include "encryption.h"
  #include "experiment_settings.h"
+ #include "encryption.h"
+
 
 #define ENCRYPTION_ASCON_MASKED   1
 #define ENCRYPTION_ASCON_UNMASKED 2
@@ -23,13 +24,15 @@
 #if !defined(SELECTED_ENCRYPTION_MODE)
 #define SELECTED_ENCRYPTION_MODE ENCRYPTION_AES_GCM
 #endif
- 
+
 #if SELECTED_ENCRYPTION_MODE == ENCRYPTION_ASCON_MASKED
 #define NONCE_SIZE 16
 #elif SELECTED_ENCRYPTION_MODE == ENCRYPTION_ASCON_UNMASKED
 #define NONCE_SIZE 16
 #elif SELECTED_ENCRYPTION_MODE == ENCRYPTION_AES_GCM
 #define NONCE_SIZE 12
+#else
+#define NONCE_SIZE 0
 #endif
 
 
@@ -220,9 +223,37 @@ void send_next_chunk() {
         printf("❌ BLE notification failed! Status: %d, Seq Num: %d\n", status, counter);
     } else {
         printf("✅ BLE notification sent successfully! Seq Num: %d\n", counter);
-        counter++;  // ✅ Move counter increment here
+        counter++;
     }
 
+}
+
+void send_plaintext_temperature() {
+    log_start_time(counter);
+
+    uint8_t plaintext[sizeof(current_temps) + 1];
+
+    char associated_data[50];
+    snprintf(associated_data, sizeof(associated_data), "|%s|%d", sensor_ID, counter);
+    size_t ad_len = strlen(associated_data);
+
+    uint8_t final_message[128 + 50] = {0};
+    size_t plaintext_len = sizeof(current_temps);
+    memcpy(final_message, plaintext, plaintext_len);
+    memcpy(final_message + plaintext_len, associated_data, ad_len);
+
+    size_t final_message_len = plaintext_len + ad_len;
+    pretty_print("Sending plaintext temperature\n", final_message, final_message_len);
+
+    int status = att_server_notify(con_handle, ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_VALUE_HANDLE,
+        final_message, final_message_len);
+    
+    if (status != 0) {
+        printf("❌ BLE notification failed! Status: %d, Seq Num: %d\n", status, counter);
+    } else {
+        printf("✅ BLE notification sent successfully! Seq Num: %d\n", counter);
+        counter++;
+    }
 }
 
 
@@ -259,7 +290,12 @@ void send_next_chunk() {
              break;
          case ATT_EVENT_CAN_SEND_NOW:
              if (counter < MAX_PACKETS) {
-                 send_encrypted_temperature();
+                if (SELECTED_ENCRYPTION_MODE != ENCRYPTION_NONE) {
+                    send_encrypted_temperature();
+                }
+                else {
+                    send_plaintext_temperature();
+                }
              } else {
                  if (active_transfer.data == NULL) {  
                      printf("⚠️ Reached MAX_PACKETS (%d), starting data transfer...\n", MAX_PACKETS);

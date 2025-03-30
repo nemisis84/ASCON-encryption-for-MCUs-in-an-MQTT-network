@@ -21,7 +21,7 @@ class SecureMQTTClient:
         self.crypto_algorithm = crypto_algorithm
         self.key = bytes.fromhex("000102030405060708090A0B0C0D0E0F")
         self.devices = {"TEMP-1": bytes.fromhex("000102030405060708090A0B0C0D0E0F")}
-        self.nonce_size = 16 if crypto_algorithm == "ASCON" else 12
+        self.nonce_size = 16 if crypto_algorithm == "ASCON" else 12 if crypto_algorithm == "AES-GCM" else 0
 
         # Initialize MQTT client
         self.client = mqtt.Client(
@@ -49,19 +49,22 @@ class SecureMQTTClient:
         if not self.recive_data_mode:
             try:
                 payload = msg.payload
-                print(f"\nEncrypted message received:{payload.hex()}")
-                ciphertext, nonce, associated_data = self._parse_encrypted_message(
-                payload)
-                print("Parsed ciphertext+tag:", ciphertext.hex())
-                print("Parsed nonce:", nonce.hex())
-                print("Parsed associated data:", associated_data.hex())
-                if self.recive_data_mode:
-                    print("Recive data mode")
+                print(f"\nMessage received:{payload.hex()}")
+                if self._check_if_data_is_incoming(payload):
+                        return
+                if self.crypto_algorithm == "NONE" and self.send_back:
+                    print("No encryption, sending back the message")
+                    self.publish(payload, "/ascon-e2e/PICO")
                     return
-                decrypted_msg = self._decrypt_message(ciphertext, nonce,
-                                                        associated_data)
-                print(f"Decrypted message: {decrypted_msg}")
-
+                else:
+                    ciphertext, nonce, associated_data = self._parse_encrypted_message(
+                    payload)
+                    print("Parsed ciphertext+tag:", ciphertext.hex())
+                    print("Parsed nonce:", nonce.hex())
+                    print("Parsed associated data:", associated_data.hex())
+                    decrypted_msg = self._decrypt_message(ciphertext, nonce,
+                                                            associated_data)
+                    print(f"Decrypted message: {decrypted_msg}")
 
                 if self.send_back:
                     
@@ -139,7 +142,7 @@ class SecureMQTTClient:
 
     def _encrypt_message(self,
                         message: bytes,
-                        associated_data: bytes = b"BLE-Temp"):
+                        associated_data: bytes = b"BLE-Temp") -> tuple[bytes, bytes]:
         """Encrypts a message using Ascon or AES-GCM-128."""
         nonce = os.urandom(self.nonce_size)
         start_time = time.perf_counter_ns()  # ⏱️ Start time
@@ -234,7 +237,7 @@ class SecureMQTTClient:
         """Encrypt and publish a message to the MQTT topic."""
         if not topic:
             topic = self.topic
-
+        print(f"Publishing message to {topic}: {message.hex()}")
         self.client.publish(topic, message)
 
     def listen(self):
@@ -246,7 +249,7 @@ class SecureMQTTClient:
 if __name__ == "__main__":
     broker = "mqtt20.iik.ntnu.no"
     topic = "/ascon-e2e/data-storage"
-    client = SecureMQTTClient(broker, topic, crypto_algorithm="AES-GCM")
+    client = SecureMQTTClient(broker, topic, crypto_algorithm="ASCON")
     # Connect to the broker
     client.connect()
     # Start listening for encrypted messages
