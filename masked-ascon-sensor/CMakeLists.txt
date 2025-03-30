@@ -34,7 +34,7 @@ project(masked-ascon-sensor C CXX ASM)
 pico_sdk_init()
 
 # User-selectable encryption mode (string)
-set(SELECTED_ENCRYPTION_MODE "AES_GCM" CACHE STRING "Selected encryption mode")
+set(SELECTED_ENCRYPTION_MODE "ASCON_MASKED" CACHE STRING "Selected encryption mode")
 set_property(CACHE SELECTED_ENCRYPTION_MODE PROPERTY STRINGS ASCON_MASKED ASCON_UNMASKED AES_GCM NONE)
 
 # Determine paths, sources, and numeric ID for compiler
@@ -60,6 +60,8 @@ elseif(SELECTED_ENCRYPTION_MODE STREQUAL "AES_GCM")
 
 elseif(SELECTED_ENCRYPTION_MODE STREQUAL "NONE")
     set(ENCRYPTION_MODE_ID 4)
+    set(CRYPTO_SOURCES "")
+    set(CRYPTO_INCLUDE "")
 
 else()
     message(FATAL_ERROR "Invalid SELECTED_ENCRYPTION_MODE: ${SELECTED_ENCRYPTION_MODE}")

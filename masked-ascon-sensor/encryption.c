@@ -26,6 +26,8 @@
 #elif SELECTED_ENCRYPTION_MODE == ENCRYPTION_AES_GCM
 #include "crypto_aead.h"
 #define NONCE_SIZE 12
+#else
+#define NONCE_SIZE 0
 #endif
 
 #define TAG_SIZE 16
@@ -123,7 +125,54 @@ void encrypt(const void *data, size_t data_size, uint8_t *output, size_t *output
     log_end_encryption_time(counter);
 }
 
+
+int parse_unencrypted(uint8_t *received_data, size_t received_len,
+    uint8_t **output, size_t *output_len, uint16_t *sequence_number) {
+    if (received_len < 5) {
+        printf("❌ Error: Received packet too small\n");
+        return -1;
+    }
+
+    size_t ad_start_index = 0;
+    for (ssize_t i = (ssize_t)received_len - 1; i >= 0; i--) {
+        if (memcmp(received_data + i, AD_PATTERN, AD_PATTERN_LEN) == 0) {
+            ad_start_index = i;
+            break;
+        }
+    }
+
+    if (ad_start_index == 0) {
+        printf("❌ Error: Associated Data not found in payload.\n");
+        return -1;
+    }
+    printf("AD found at index %zu\n", ad_start_index);
+    size_t ad_len = received_len - ad_start_index;
+    char extracted_ad[ad_len + 1];
+    memcpy(extracted_ad, received_data + ad_start_index, ad_len);
+    extracted_ad[ad_len] = '\0';
+    printf("Extracted AD: %s\n", extracted_ad);
+    char received_sensor_id[20];
+    int temp_seq_num = 0;
+    if (sscanf(extracted_ad, "|%[^|]|%d", received_sensor_id, &temp_seq_num) != 2) return -1;
+    if (strcmp(received_sensor_id, sensor_ID) != 0) return -1;
+    printf("Parsed AD: Sensor ID: %s, Sequence Number: %d\n", received_sensor_id, temp_seq_num);
+    *sequence_number = (uint16_t)temp_seq_num;
+    *output_len = ad_start_index;
+    *output = (uint8_t *)malloc(*output_len);
+    if (!*output) return -1;
+
+    memcpy(*output, received_data, *output_len);
+    log_end_time(*sequence_number);
+    return 0;
+}
+
+
 int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_t *output_len, uint16_t *sequence_number) {
+
+
+    if (SELECTED_ENCRYPTION_MODE == ENCRYPTION_NONE) {
+        return parse_unencrypted(received_data, received_len, output, output_len, sequence_number);
+    }
 
     // 🔹 Ensure packet is long enough
     if (received_len < (TAG_SIZE + NONCE_SIZE + 5)) {  // 5 = min "|X|Y" length
@@ -162,7 +211,7 @@ int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_
     }
     *sequence_number = (uint16_t)temp_seq_num;
     
-
+    printf("Parsed AD: Sensor ID: %s, Sequence Number: %d\n", received_sensor_id, *sequence_number);
     // 🔹 Validate Sensor ID
     if (strcmp(received_sensor_id, sensor_ID) != 0) {
         printf("❌ Sensor ID Mismatch! Expected: %s, Received: %s\n", sensor_ID, received_sensor_id);
@@ -186,7 +235,6 @@ int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_
 
     int status = -1;
 
-
     if (SELECTED_ENCRYPTION_MODE == ENCRYPTION_ASCON_MASKED) {
         log_start_decryption_time(*sequence_number);
         status = masked_ascon128a_decrypt(
@@ -202,7 +250,6 @@ int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_
             (uint8_t *)extracted_ad, ad_len,
             received_nonce, key_128);
     }
-
     if (status >= 0) {
         *output = decrypted_data;
         log_end_decryption_time(*sequence_number);
