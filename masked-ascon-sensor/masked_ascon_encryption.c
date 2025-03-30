@@ -3,8 +3,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "encryption.h"  // for key_128 and shared types
-
+#include "encryption.h"
 static ascon_masked_key_128_t masked_key;
 static ascon_random_state_t prng_state;
 

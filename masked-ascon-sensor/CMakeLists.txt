@@ -34,26 +34,29 @@ project(masked-ascon-sensor C CXX ASM)
 pico_sdk_init()
 
 # User-selectable encryption mode (string)
-set(SELECTED_ENCRYPTION_MODE "ASCON_MASKED" CACHE STRING "Selected encryption mode")
-set_property(CACHE SELECTED_ENCRYPTION_MODE PROPERTY STRINGS ASCON_MASKED ASCON_UNMASKED AES_MASKED NONE)
+set(SELECTED_ENCRYPTION_MODE "AES_GCM" CACHE STRING "Selected encryption mode")
+set_property(CACHE SELECTED_ENCRYPTION_MODE PROPERTY STRINGS ASCON_MASKED ASCON_UNMASKED AES_GCM NONE)
 
 # Determine paths, sources, and numeric ID for compiler
 if(SELECTED_ENCRYPTION_MODE STREQUAL "ASCON_MASKED")
     set(ENCRYPTION_MODE_ID 1)
     set(ASCON_PATH ${CMAKE_CURRENT_LIST_DIR}/libs/ascon-suite)
-    set(ASCON_INCLUDE ${ASCON_PATH}/include)
-    set(ASCON_SOURCES "")
+    set(CRYPTO_INCLUDE ${ASCON_PATH}/include)
+    set(CRYPTO_SOURCES "")
     add_subdirectory(${ASCON_PATH} EXCLUDE_FROM_ALL)
     list(APPEND ENCRYPTION_SOURCES masked_ascon_encryption.c)
 
 elseif(SELECTED_ENCRYPTION_MODE STREQUAL "ASCON_UNMASKED")
     set(ENCRYPTION_MODE_ID 2)
     set(ASCON_PATH ${CMAKE_CURRENT_LIST_DIR}/libs/ascon/armv6m)
-    file(GLOB ASCON_SOURCES ${ASCON_PATH}/*.c)
-    set(ASCON_INCLUDE ${ASCON_PATH})
+    file(GLOB CRYPTO_SOURCES ${ASCON_PATH}/*.c)
+    set(CRYPTO_INCLUDE ${ASCON_PATH})
 
-elseif(SELECTED_ENCRYPTION_MODE STREQUAL "AES_MASKED")
+elseif(SELECTED_ENCRYPTION_MODE STREQUAL "AES_GCM")
     set(ENCRYPTION_MODE_ID 3)
+    set(AES_PATH ${CMAKE_CURRENT_LIST_DIR}/libs/mbedtls-fewer)
+    file(GLOB CRYPTO_SOURCES ${AES_PATH}/*.c)
+    set(CRYPTO_INCLUDE ${AES_PATH})
 
 elseif(SELECTED_ENCRYPTION_MODE STREQUAL "NONE")
     set(ENCRYPTION_MODE_ID 4)
@@ -67,7 +70,7 @@ endif()
 add_executable(masked-ascon-sensor
     server.c server_common.c
     encryption.c
-    ${ASCON_SOURCES}
+    ${CRYPTO_SOURCES}
     ${ENCRYPTION_SOURCES}
 )
 
@@ -77,7 +80,7 @@ pico_enable_stdio_usb(masked-ascon-sensor 1)
 
 target_include_directories(masked-ascon-sensor PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}
-    ${ASCON_INCLUDE}
+    ${CRYPTO_INCLUDE}
 )
 
 target_link_libraries(masked-ascon-sensor
