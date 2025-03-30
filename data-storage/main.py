@@ -5,19 +5,23 @@ import time
 from datetime import datetime
 import pandas as pd
 import struct
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
 
 class SecureMQTTClient:
 
-    def __init__(self, broker, topic, port=1883, send_back=True):
+    def __init__(self, broker, topic, port=1883, send_back=True, crypto_algorithm="ASCON"):
         """Initialize the MQTT client and Ascon encryption parameters."""
         self.broker = broker
         self.port = port
         self.topic = topic
 
-        # Ascon encryption parameters
+        # Crypto encryption parameters
+        
+        self.crypto_algorithm = crypto_algorithm
         self.key = bytes.fromhex("000102030405060708090A0B0C0D0E0F")
         self.devices = {"TEMP-1": bytes.fromhex("000102030405060708090A0B0C0D0E0F")}
-        self.nonce_size = 16
+        self.nonce_size = 16 if crypto_algorithm == "ASCON" else 12
 
         # Initialize MQTT client
         self.client = mqtt.Client(
@@ -134,19 +138,28 @@ class SecureMQTTClient:
 
 
     def _encrypt_message(self,
-                         message: bytes,
-                         associated_data: bytes = b"BLE-Temp"):
-        """Encrypts a message using Ascon."""
+                        message: bytes,
+                        associated_data: bytes = b"BLE-Temp"):
+        """Encrypts a message using Ascon or AES-GCM-128."""
         nonce = os.urandom(self.nonce_size)
         start_time = time.perf_counter_ns()  # ⏱️ Start time
-        ciphertext = ascon.ascon_encrypt(self.key,
-                                         nonce,
-                                         associated_data,
-                                         message,
-                                         variant="Ascon-128a")
+
+        if self.crypto_algorithm == "ASCON":
+            ciphertext = ascon.ascon_encrypt(self.key,
+                                            nonce,
+                                            associated_data,
+                                            message,
+                                            variant="Ascon-128a")
+        elif self.crypto_algorithm == "AES-GCM":
+            aesgcm = AESGCM(self.key)
+            ciphertext = aesgcm.encrypt(nonce, message, associated_data)
+        else:
+            raise ValueError("Unsupported crypto_algorithm")
+
         end_time = time.perf_counter_ns()  # ⏱️ End time
         print(f"🔹 Encryption Time: {(end_time - start_time) / 1000:.2f} µs")
         return ciphertext, nonce
+
 
     def _check_if_data_is_incoming(self, payload):
         # Convert payload to string for easier processing
@@ -191,22 +204,26 @@ class SecureMQTTClient:
         ciphertext = payload[:ad_start_index-self.nonce_size]
         return ciphertext, nonce, associated_data
 
-    def _decrypt_message(self, ciphertext: bytes, nonce: bytes,
-                         associated_data: bytes):
-        """Decrypts a received message using Ascon."""
+    def _decrypt_message(self, ciphertext: bytes, nonce: bytes, associated_data: bytes):
         associated_str = associated_data.decode()[1:]
         device_id = associated_str.split("|")[0]
         key = self.devices[device_id]
-        start_time = time.perf_counter_ns()  # ⏱️ Start time
-        plaintext = ascon.ascon_decrypt(key,
-                                        nonce,
-                                        associated_data,
-                                        ciphertext,
-                                        variant="Ascon-128a")
-        end_time = time.perf_counter_ns()  # ⏱️ End time
+        start_time = time.perf_counter_ns()
+
+        if self.crypto_algorithm == "ASCON":
+            plaintext = ascon.ascon_decrypt(
+                key, nonce, associated_data, ciphertext, variant="Ascon-128a")
+        elif self.crypto_algorithm == "AES-GCM":
+            aesgcm = AESGCM(key)
+            plaintext = aesgcm.decrypt(nonce, ciphertext, associated_data)
+        else:
+            raise ValueError("Unsupported crypto_algorithm")
+
+        end_time = time.perf_counter_ns()
         print(f"🔹 Decryption Time: {(end_time - start_time) / 1000:.2f} µs")
         decoded_value = int.from_bytes(plaintext, byteorder='little')
         return decoded_value
+
 
     def connect(self):
         """Connect to the MQTT broker."""
@@ -229,7 +246,7 @@ class SecureMQTTClient:
 if __name__ == "__main__":
     broker = "mqtt20.iik.ntnu.no"
     topic = "/ascon-e2e/data-storage"
-    client = SecureMQTTClient(broker, topic)
+    client = SecureMQTTClient(broker, topic, crypto_algorithm="AES-GCM")
     # Connect to the broker
     client.connect()
     # Start listening for encrypted messages

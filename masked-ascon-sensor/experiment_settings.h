@@ -6,7 +6,7 @@
 #define INTERVAL_1_SECOND     1
 
 // Define scenario selector (Set this to 1–6)
-#define SELECTED_SCENARIO     4
+#define SELECTED_SCENARIO     6
 
 // Set MAX_PACKETS globally
 #define MAX_PACKETS           5

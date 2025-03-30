@@ -9,35 +9,33 @@
 
 #define ENCRYPTION_ASCON_MASKED   1
 #define ENCRYPTION_ASCON_UNMASKED 2
-#define ENCRYPTION_AES_MASKED     3
+#define ENCRYPTION_AES_GCM        3
 #define ENCRYPTION_NONE           4
 
 
 #if !defined(SELECTED_ENCRYPTION_MODE)
-#define SELECTED_ENCRYPTION_MODE ENCRYPTION_ASCON_UNMASKED
+#define SELECTED_ENCRYPTION_MODE ENCRYPTION_AES_GCM
 #endif
 
 #if SELECTED_ENCRYPTION_MODE == ENCRYPTION_ASCON_MASKED
+#define NONCE_SIZE 16
 #include "masked_ascon_encryption.h"
 #elif SELECTED_ENCRYPTION_MODE == ENCRYPTION_ASCON_UNMASKED
 #include "crypto_aead.h"
+#define NONCE_SIZE 16
+#elif SELECTED_ENCRYPTION_MODE == ENCRYPTION_AES_GCM
+#include "crypto_aead.h"
+#define NONCE_SIZE 12
 #endif
 
+#define TAG_SIZE 16
+#define AD_PATTERN "|TEMP-"
+#define AD_PATTERN_LEN 6
 
 static unsigned char key_128[16] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 
     0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F };
 
-
-#define ASCON_KEY_SIZE 16
-#define ASCON_NONCE_SIZE 16
-#define ASCON_TAG_SIZE 16
-
-
-#define AD_PATTERN "|TEMP-"
-#define AD_PATTERN_LEN 6
-
-uint8_t nonce[ASCON_NONCE_SIZE];
-
+uint8_t nonce[NONCE_SIZE];
 
 void init_primitives() {
     #if SELECTED_ENCRYPTION_MODE == ENCRYPTION_ASCON_MASKED
@@ -78,53 +76,57 @@ void generate_nonce(uint8_t *nonce) {
     // ascon_random_fetch(&prng_state, nonce, 16);
     rng_128_t rand128;
     get_rand_128(&rand128);
-    memcpy(nonce, &rand128, sizeof(rng_128_t));
+    memcpy(nonce, &rand128, NONCE_SIZE);
 }
 
 
 void encrypt(const void *data, size_t data_size, uint8_t *output, size_t *output_len,
     uint8_t *nonce, const char *associated_data, uint16_t counter) {
 
-    size_t ad_len = strlen(associated_data);
+    size_t ad_len = strnlen(associated_data, 50);
+    if (ad_len >= 50) {
+        printf("❌ AD length too long or missing null terminator!\n");
+        return;
+    }
 
     generate_nonce(nonce);
 
     log_start_encryption_time(counter);
-    switch (SELECTED_ENCRYPTION_MODE) {
-        case ENCRYPTION_ASCON_MASKED:
-            masked_ascon128a_encrypt(output, output_len,
-                (const uint8_t *)data, data_size,
-                (const uint8_t *)associated_data, ad_len,
-                nonce);
-            break;
-        case ENCRYPTION_ASCON_UNMASKED:
-            unsigned long long clen = 0;
-            crypto_aead_encrypt(output, &clen,
-                (const uint8_t *)data, data_size,
-                (const uint8_t *)associated_data, ad_len,
-                NULL, nonce, key_128);
-            *output_len = (size_t)clen;
-            printf("Encrypted data: ");
-            for (size_t i = 0; i < *output_len; i++) {
-                printf("%02X ", output[i]);
-            }
-            printf("\n");
-            printf("Nonce: ");
-            for (int i = 0; i < ASCON_NONCE_SIZE; i++) {
-                printf("%02X ", nonce[i]);
-            }
-            printf("\n");
-            printf("Associated Data: %s\n", associated_data);
+    if (SELECTED_ENCRYPTION_MODE == ENCRYPTION_ASCON_MASKED) {
+        masked_ascon128a_encrypt(output, output_len,
+            (const uint8_t *)data, data_size,
+            (const uint8_t *)associated_data, ad_len,
+            nonce);
+    } else if (SELECTED_ENCRYPTION_MODE == ENCRYPTION_ASCON_UNMASKED ||
+               SELECTED_ENCRYPTION_MODE == ENCRYPTION_AES_GCM) {
+        printf("Encrypting with AES-GCM...\n");
+        unsigned long long clen = 0;
+        printf("Nonce: ");
+        for (int i = 0; i < NONCE_SIZE; i++) {
+            printf("%02x", nonce[i]);
+        }
+        printf("\n");
+        printf("associated_data: ");
+        for (int i = 0; i < ad_len; i++) {
+            printf("%02x", associated_data[i]);
+        }
+        printf("\n");
 
-        break;
-    }
+        crypto_aead_encrypt(output, &clen,
+            (const uint8_t *)data, data_size,
+            (const uint8_t *)associated_data, ad_len,
+            NULL, nonce, key_128);
+    
+        *output_len = (size_t)clen;
+    } 
+    
     log_end_encryption_time(counter);
 }
 
 int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_t *output_len, uint16_t *sequence_number) {
 
     // 🔹 Ensure packet is long enough
-    if (received_len < (ASCON_TAG_SIZE + ASCON_NONCE_SIZE + 5)) {  // 5 = min "|X|Y" length
+    if (received_len < (TAG_SIZE + NONCE_SIZE + 5)) {  // 5 = min "|X|Y" length
         printf("❌ Error: Received packet too small\n");
         return -1;
     }
@@ -132,7 +134,7 @@ int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_
     // 🔹 Locate the start of Associated Data (AD)
     size_t ad_start_index = 0;
 
-    for (size_t i = received_len - 1; i >= ASCON_NONCE_SIZE; i--) {
+    for (size_t i = received_len - 1; i >= NONCE_SIZE; i--) {
         if (memcmp(received_data + i, AD_PATTERN, AD_PATTERN_LEN) == 0) {
             ad_start_index = i;
             break;
@@ -168,9 +170,9 @@ int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_
     }
 
     // 🔹 Extract Nonce (Before AD, 16 bytes)
-    size_t nonce_start_index = ad_start_index - ASCON_NONCE_SIZE;
-    uint8_t received_nonce[ASCON_NONCE_SIZE];
-    memcpy(received_nonce, received_data + nonce_start_index, ASCON_NONCE_SIZE);
+    size_t nonce_start_index = ad_start_index - NONCE_SIZE;
+    uint8_t received_nonce[NONCE_SIZE];
+    memcpy(received_nonce, received_data + nonce_start_index, NONCE_SIZE);
 
     size_t ciphertext_len = nonce_start_index;
     uint8_t *ciphertext = received_data;
@@ -185,25 +187,20 @@ int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_
     int status = -1;
 
 
-    switch (SELECTED_ENCRYPTION_MODE) {
-        case ENCRYPTION_ASCON_MASKED:
-            log_start_decryption_time(*sequence_number);
-            status = masked_ascon128a_decrypt(
-                decrypted_data, output_len,
-                ciphertext, ciphertext_len,
-                (uint8_t *)extracted_ad, ad_len,
-                received_nonce);
-            break;
-
-        case ENCRYPTION_ASCON_UNMASKED:
-            log_start_decryption_time(*sequence_number);
-            status = crypto_aead_decrypt(decrypted_data, output_len,
-                NULL, ciphertext, ciphertext_len,
-                (uint8_t *)extracted_ad, ad_len,
-                received_nonce, key_128);
-            break;
-        default:
-            break;
+    if (SELECTED_ENCRYPTION_MODE == ENCRYPTION_ASCON_MASKED) {
+        log_start_decryption_time(*sequence_number);
+        status = masked_ascon128a_decrypt(
+            decrypted_data, output_len,
+            ciphertext, ciphertext_len,
+            (uint8_t *)extracted_ad, ad_len,
+            received_nonce);
+    } else if (SELECTED_ENCRYPTION_MODE == ENCRYPTION_ASCON_UNMASKED ||
+               SELECTED_ENCRYPTION_MODE == ENCRYPTION_AES_GCM) {
+        log_start_decryption_time(*sequence_number);
+        status = crypto_aead_decrypt(decrypted_data, output_len,
+            NULL, ciphertext, ciphertext_len,
+            (uint8_t *)extracted_ad, ad_len,
+            received_nonce, key_128);
     }
 
     if (status >= 0) {

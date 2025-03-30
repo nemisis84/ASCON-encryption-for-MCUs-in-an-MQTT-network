@@ -14,9 +14,26 @@
  #include "server_common.h"
  #include "encryption.h"
  #include "experiment_settings.h"
+
+#define ENCRYPTION_ASCON_MASKED   1
+#define ENCRYPTION_ASCON_UNMASKED 2
+#define ENCRYPTION_AES_GCM        3
+#define ENCRYPTION_NONE           4
+
+#if !defined(SELECTED_ENCRYPTION_MODE)
+#define SELECTED_ENCRYPTION_MODE ENCRYPTION_AES_GCM
+#endif
  
+#if SELECTED_ENCRYPTION_MODE == ENCRYPTION_ASCON_MASKED
+#define NONCE_SIZE 16
+#elif SELECTED_ENCRYPTION_MODE == ENCRYPTION_ASCON_UNMASKED
+#define NONCE_SIZE 16
+#elif SELECTED_ENCRYPTION_MODE == ENCRYPTION_AES_GCM
+#define NONCE_SIZE 12
+#endif
+
+
  #define APP_AD_FLAGS 0x06
- #define ASCON_NONCE_SIZE 16
  #define MAX_PACKET_SIZE 256 // Maximum size of a packet to prevent out-of-memory issues
 
 
@@ -174,29 +191,25 @@ void send_next_chunk() {
     att_server_request_can_send_now_event(con_handle);
 }
 
-
-
-
  void send_encrypted_temperature() {
     log_start_time(counter);
 
     uint8_t encrypted_payload[128];  // supports large payload + tag
     size_t encrypted_len;
-    uint8_t nonce[ASCON_NONCE_SIZE];
+    uint8_t nonce[NONCE_SIZE];
 
     char associated_data[50];
     snprintf(associated_data, sizeof(associated_data), "|%s|%d", sensor_ID, counter);
-
     encrypt(&current_temps, sizeof(current_temps), encrypted_payload, &encrypted_len,
             nonce, associated_data, counter);
 
     size_t ad_len = strlen(associated_data);
-    uint8_t final_message[128 + ASCON_NONCE_SIZE + 50] = {0};
+    uint8_t final_message[128 + NONCE_SIZE + 50] = {0};
     memcpy(final_message, encrypted_payload, encrypted_len);
-    memcpy(final_message + encrypted_len, nonce, ASCON_NONCE_SIZE);
-    memcpy(final_message + encrypted_len + ASCON_NONCE_SIZE, associated_data, ad_len);
+    memcpy(final_message + encrypted_len, nonce, NONCE_SIZE);
+    memcpy(final_message + encrypted_len + NONCE_SIZE, associated_data, ad_len);
 
-    size_t final_message_len = encrypted_len + ASCON_NONCE_SIZE + ad_len;
+    size_t final_message_len = encrypted_len + NONCE_SIZE + ad_len;
 
     pretty_print("Sending encrypted temperature\n", final_message, final_message_len);
 
@@ -293,7 +306,6 @@ void recieve_encrypted_data(uint8_t *received_data, size_t received_len) {
             free(decrypted_data);
             return;
         }
-        
         
         int num_entries = decrypted_len / sizeof(uint16_t);
         uint16_t *temperatures = (uint16_t *)decrypted_data;
