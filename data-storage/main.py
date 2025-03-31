@@ -33,7 +33,7 @@ class SecureMQTTClient:
 
 
         # Store data
-        self.recive_data_mode = False
+        self.receive_data_mode = False
         self.receiving_data_type = ""
         self.received_bytes = b""
         self.encryption_log = pd.DataFrame(columns=["start", "end"])
@@ -55,7 +55,7 @@ class SecureMQTTClient:
 
     def _on_message(self, client, userdata, msg):
         """Callback when a message is received."""
-        if not self.recive_data_mode:
+        if not self.receive_data_mode:
             try:
                 payload = msg.payload
                 print(f"\nMessage received:{payload.hex()}")
@@ -146,7 +146,7 @@ class SecureMQTTClient:
 
         print(f"✅ Data successfully exported to {file_path}")
         self.received_bytes = b""  # Reset the received bytes
-        self.recive_data_mode = False
+        self.receive_data_mode = False
 
 
     def _encrypt_message(self,
@@ -189,7 +189,7 @@ class SecureMQTTClient:
 
             if suffix in data_types:
                 print(f"Entering Receive Data Mode: Detected Data Type '{suffix}'")
-                self.recive_data_mode = True
+                self.receive_data_mode = True
                 self.receiving_data_type = suffix
                 return True
 
