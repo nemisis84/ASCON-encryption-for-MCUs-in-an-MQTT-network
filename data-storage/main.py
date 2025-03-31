@@ -31,9 +31,18 @@ class SecureMQTTClient:
         self.client.on_message = self._on_message
         self.send_back = send_back
 
-        self.recive_data_mode = False
-        self.recieving_data_type = ""
+
+        # Store data
+        self.receive_data_mode = False
+        self.receiving_data_type = ""
         self.received_bytes = b""
+        self.encryption_log = pd.DataFrame(columns=["start", "end"])
+        self.decryption_log = pd.DataFrame(columns=["start", "end"])
+        self.stored = False # Keeps track of if the datastorage data has been stored
+        # Ensure the `/results` directory exists
+        self.results_dir = os.path.join("results", crypto_algorithm, datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
+        os.makedirs(self.results_dir, exist_ok=True)
+
 
         print(f"MQTT Protocol Version: {self.client._protocol}")
 
@@ -46,7 +55,7 @@ class SecureMQTTClient:
 
     def _on_message(self, client, userdata, msg):
         """Callback when a message is received."""
-        if not self.recive_data_mode:
+        if not self.receive_data_mode:
             try:
                 payload = msg.payload
                 print(f"\nMessage received:{payload.hex()}")
@@ -102,7 +111,6 @@ class SecureMQTTClient:
         and exports the results as a CSV file inside `/results`, with a timestamped filename.
         """
 
-
         if not self.received_bytes:
             print("❌ No data to export.")
             return
@@ -124,20 +132,21 @@ class SecureMQTTClient:
         # Convert to Pandas DataFrame
         df = pd.DataFrame(rtt_entries, columns=["Seq_Num", "Start_Time", "End_Time"])
 
-        # Ensure the `/results` directory exists
-        results_dir = "results"
-        os.makedirs(results_dir, exist_ok=True)
+        if not self.stored:
+            self.encryption_log.to_csv(self.results_dir +"/DS_ENC.csv", index=False)
+            self.decryption_log.to_csv(self.results_dir + "/DS_DEC.csv", index=False)
+            self.stored = True
 
         # Generate a timestamped filename
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        file_path = os.path.join(results_dir, f"{self.recieving_data_type}_{timestamp}.csv")
+        
+        file_path = os.path.join(self.results_dir, f"{self.receiving_data_type}.csv")
 
         # Save DataFrame to CSV
         df.to_csv(file_path, index=False)
 
         print(f"✅ Data successfully exported to {file_path}")
         self.received_bytes = b""  # Reset the received bytes
-        self.recive_data_mode = False
+        self.receive_data_mode = False
 
 
     def _encrypt_message(self,
@@ -159,8 +168,12 @@ class SecureMQTTClient:
         else:
             raise ValueError("Unsupported crypto_algorithm")
 
-        end_time = time.perf_counter_ns()  # ⏱️ End time
-        print(f"🔹 Encryption Time: {(end_time - start_time) / 1000:.2f} µs")
+        end_time = time.perf_counter_ns()
+        self.encryption_log.loc[len(self.encryption_log)] = {
+            "start": start_time,
+            "end": end_time,
+        }
+
         return ciphertext, nonce
 
 
@@ -176,8 +189,8 @@ class SecureMQTTClient:
 
             if suffix in data_types:
                 print(f"Entering Receive Data Mode: Detected Data Type '{suffix}'")
-                self.recive_data_mode = True
-                self.recieving_data_type = suffix
+                self.receive_data_mode = True
+                self.receiving_data_type = suffix
                 return True
 
             return False
@@ -223,7 +236,11 @@ class SecureMQTTClient:
             raise ValueError("Unsupported crypto_algorithm")
 
         end_time = time.perf_counter_ns()
-        print(f"🔹 Decryption Time: {(end_time - start_time) / 1000:.2f} µs")
+        self.decryption_log.loc[len(self.decryption_log)] = {
+            "start": start_time,
+            "end": end_time,
+        }
+
         decoded_value = int.from_bytes(plaintext, byteorder='little')
         return decoded_value
 
