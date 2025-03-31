@@ -34,13 +34,13 @@ class SecureMQTTClient:
 
         # Store data
         self.recive_data_mode = False
-        self.recieving_data_type = ""
+        self.receiving_data_type = ""
         self.received_bytes = b""
         self.encryption_log = pd.DataFrame(columns=["start", "end"])
         self.decryption_log = pd.DataFrame(columns=["start", "end"])
         self.stored = False # Keeps track of if the datastorage data has been stored
         # Ensure the `/results` directory exists
-        self.results_dir = "results/" + crypto_algorithm + "/" + datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        self.results_dir = os.path.join("results", crypto_algorithm, datetime.now().strftime("%Y-%m-%d_%H-%M-%S"))
         os.makedirs(self.results_dir, exist_ok=True)
 
 
@@ -139,7 +139,7 @@ class SecureMQTTClient:
 
         # Generate a timestamped filename
         
-        file_path = os.path.join(self.results_dir, f"{self.recieving_data_type}.csv")
+        file_path = os.path.join(self.results_dir, f"{self.receiving_data_type}.csv")
 
         # Save DataFrame to CSV
         df.to_csv(file_path, index=False)
@@ -190,7 +190,7 @@ class SecureMQTTClient:
             if suffix in data_types:
                 print(f"Entering Receive Data Mode: Detected Data Type '{suffix}'")
                 self.recive_data_mode = True
-                self.recieving_data_type = suffix
+                self.receiving_data_type = suffix
                 return True
 
             return False
