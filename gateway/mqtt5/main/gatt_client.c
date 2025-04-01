@@ -102,15 +102,15 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
 
     switch (event) {
     case ESP_GATTC_REG_EVT:
-        ESP_LOGI(GATTC_TAG, "GATT client register, status %d, app_id %d, gattc_if %d", param->reg.status, param->reg.app_id, gattc_if);
+        // ESP_LOGI(GATTC_TAG, "GATT client register, status %d, app_id %d, gattc_if %d", param->reg.status, param->reg.app_id, gattc_if);
         esp_err_t scan_ret = esp_ble_gap_set_scan_params(&ble_scan_params);
         if (scan_ret){
             ESP_LOGE(GATTC_TAG, "set scan params error, error code = %x", scan_ret);
         }
         break;
     case ESP_GATTC_CONNECT_EVT:{
-        ESP_LOGI(GATTC_TAG, "Connected, conn_id %d, remote "ESP_BD_ADDR_STR"", p_data->connect.conn_id,
-                 ESP_BD_ADDR_HEX(p_data->connect.remote_bda));
+        // ESP_LOGI(GATTC_TAG, "Connected, conn_id %d, remote "ESP_BD_ADDR_STR"", p_data->connect.conn_id,
+                //  ESP_BD_ADDR_HEX(p_data->connect.remote_bda));
         gl_profile_tab[PICO_APP_ID].conn_id = p_data->connect.conn_id;
         memcpy(gl_profile_tab[PICO_APP_ID].remote_bda, p_data->connect.remote_bda, sizeof(esp_bd_addr_t));
         esp_err_t mtu_ret = esp_ble_gattc_send_mtu_req (gattc_if, p_data->connect.conn_id);
@@ -272,13 +272,8 @@ static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_
         break;
     }
     case ESP_GATTC_NOTIFY_EVT:
-        if (p_data->notify.is_notify){
-            ESP_LOGI(GATTC_TAG, "🔹 Notification received, size: %d", p_data->notify.value_len);
-        }else{
-            ESP_LOGI(GATTC_TAG, "🔹 Indication received, size: %d", p_data->notify.value_len);
-        }
 
-        ESP_LOG_BUFFER_HEX(GATTC_TAG, p_data->notify.value, p_data->notify.value_len);
+        // ESP_LOG_BUFFER_HEX(GATTC_TAG, p_data->notify.value, p_data->notify.value_len);
 
         uint8_t ble_data_buffer[512] = {0}; 
 
@@ -469,8 +464,8 @@ static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp
 
 void ble_forward(uint8_t *data, size_t len) {
 
-    ESP_LOGI(GATTC_TAG, "🔹 Sending BLE data: %.*s", len, data);
-    ESP_LOGI(GATTC_TAG, "🔹 Writing to Characteristic Handle: %d", gl_profile_tab[PICO_APP_ID].char_handle);
+    // ESP_LOGI(GATTC_TAG, "🔹 Sending BLE data: %.*s", len, data);
+    // ESP_LOGI(GATTC_TAG, "🔹 Writing to Characteristic Handle: %d", gl_profile_tab[PICO_APP_ID].char_handle);
 
     // ✅ Send data to the characteristic
     esp_err_t err = esp_ble_gattc_write_char(
@@ -483,11 +478,11 @@ void ble_forward(uint8_t *data, size_t len) {
         ESP_GATT_AUTH_REQ_NONE
     );
 
-    if (err != ESP_OK) {
-        ESP_LOGE(GATTC_TAG, "❌ BLE Write Failed: %s", esp_err_to_name(err));
-    } else {
-        ESP_LOGI(GATTC_TAG, "✅ BLE Write Success!");
-    }
+    // if (err != ESP_OK) {
+    //     ESP_LOGE(GATTC_TAG, "❌ BLE Write Failed: %s", esp_err_to_name(err));
+    // } else {
+    //     ESP_LOGI(GATTC_TAG, "✅ BLE Write Success!");
+    // }
 }
 
 void ble_init(void *pvParameters) {
