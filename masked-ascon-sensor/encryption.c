@@ -93,33 +93,21 @@ void encrypt(const void *data, size_t data_size, uint8_t *output, size_t *output
 
     generate_nonce(nonce);
 
-    log_start_encryption_time(counter);
+
     if (SELECTED_ENCRYPTION_MODE == ENCRYPTION_ASCON_MASKED) {
+        log_start_encryption_time(counter);
         masked_ascon128a_encrypt(output, output_len,
             (const uint8_t *)data, data_size,
             (const uint8_t *)associated_data, ad_len,
             nonce);
     } else if (SELECTED_ENCRYPTION_MODE == ENCRYPTION_ASCON_UNMASKED ||
                SELECTED_ENCRYPTION_MODE == ENCRYPTION_AES_GCM) {
-        printf("Encrypting with AES-GCM...\n");
-        unsigned long long clen = 0;
-        printf("Nonce: ");
-        for (int i = 0; i < NONCE_SIZE; i++) {
-            printf("%02x", nonce[i]);
-        }
-        printf("\n");
-        printf("associated_data: ");
-        for (int i = 0; i < ad_len; i++) {
-            printf("%02x", associated_data[i]);
-        }
-        printf("\n");
 
-        crypto_aead_encrypt(output, &clen,
+        log_start_encryption_time(counter);
+        crypto_aead_encrypt(output, (unsigned long long *)output_len,
             (const uint8_t *)data, data_size,
             (const uint8_t *)associated_data, ad_len,
             NULL, nonce, key_128);
-    
-        *output_len = (size_t)clen;
     } 
     
     log_end_encryption_time(counter);
@@ -145,17 +133,17 @@ int parse_unencrypted(uint8_t *received_data, size_t received_len,
         printf("❌ Error: Associated Data not found in payload.\n");
         return -1;
     }
-    printf("AD found at index %zu\n", ad_start_index);
+
     size_t ad_len = received_len - ad_start_index;
     char extracted_ad[ad_len + 1];
     memcpy(extracted_ad, received_data + ad_start_index, ad_len);
     extracted_ad[ad_len] = '\0';
-    printf("Extracted AD: %s\n", extracted_ad);
+
     char received_sensor_id[20];
     int temp_seq_num = 0;
     if (sscanf(extracted_ad, "|%[^|]|%d", received_sensor_id, &temp_seq_num) != 2) return -1;
     if (strcmp(received_sensor_id, sensor_ID) != 0) return -1;
-    printf("Parsed AD: Sensor ID: %s, Sequence Number: %d\n", received_sensor_id, temp_seq_num);
+
     *sequence_number = (uint16_t)temp_seq_num;
     *output_len = ad_start_index;
     *output = (uint8_t *)malloc(*output_len);
@@ -211,7 +199,6 @@ int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_
     }
     *sequence_number = (uint16_t)temp_seq_num;
     
-    printf("Parsed AD: Sensor ID: %s, Sequence Number: %d\n", received_sensor_id, *sequence_number);
     // 🔹 Validate Sensor ID
     if (strcmp(received_sensor_id, sensor_ID) != 0) {
         printf("❌ Sensor ID Mismatch! Expected: %s, Received: %s\n", sensor_ID, received_sensor_id);
