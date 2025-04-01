@@ -234,6 +234,7 @@ void send_plaintext_temperature() {
     uint8_t plaintext[sizeof(current_temps) + 1];
 
     char associated_data[50];
+    snprintf(associated_data, sizeof(associated_data), "|%s|%d", sensor_ID, counter);
     size_t ad_len = strlen(associated_data);
 
     uint8_t final_message[128 + 50] = {0};
