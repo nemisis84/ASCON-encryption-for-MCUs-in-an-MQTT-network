@@ -11,3 +11,4 @@ dependencies:
       - paho-mqtt == 2.1.0
       - pandas == 2.2.3
       - cryptography == 44.0.2
+      - matplotlib == 3.10.1

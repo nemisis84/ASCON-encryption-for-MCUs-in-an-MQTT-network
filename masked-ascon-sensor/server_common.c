@@ -127,7 +127,7 @@ void send_struct_data(void *data, size_t data_size, const char *data_type, trans
         return;
     }
 
-    printf("📤 Sending %s results (%zu bytes)...\n", data_type, data_size);
+    // printf("📤 Sending %s results (%zu bytes)...\n", data_type, data_size);
 
     int mtu_size = att_server_get_mtu(con_handle) - 3;
     int chunk_size = (mtu_size > 200) ? 200 : ((mtu_size > 20) ? mtu_size : 20);
@@ -234,7 +234,6 @@ void send_plaintext_temperature() {
     uint8_t plaintext[sizeof(current_temps) + 1];
 
     char associated_data[50];
-    snprintf(associated_data, sizeof(associated_data), "|%s|%d", sensor_ID, counter);
     size_t ad_len = strlen(associated_data);
 
     uint8_t final_message[128 + 50] = {0};
@@ -298,7 +297,6 @@ void send_plaintext_temperature() {
                 }
              } else {
                  if (active_transfer.data == NULL) {  
-                     printf("⚠️ Reached MAX_PACKETS (%d), starting data transfer...\n", MAX_PACKETS);
                      print_all_results();
                      send_struct_data(RTT_table, sizeof(RTT_table), "RTT", TRANSFER_RTT);
                  } else {
@@ -346,11 +344,7 @@ void recieve_encrypted_data(uint8_t *received_data, size_t received_len) {
         int num_entries = decrypted_len / sizeof(uint16_t);
         uint16_t *temperatures = (uint16_t *)decrypted_data;
         
-        printf("✅ Decrypted Temperatures: ");
-        for (int i = 0; i < num_entries; i++) {
-            printf("%.2f°C ", temperatures[i] / 100.0);
-        }
-        printf("\n");
+        printf("✅ Decrypted Temperatures successfully! Seq Num: %d\n", sequence_number);
         
         free(decrypted_data);
     } else {
@@ -369,7 +363,6 @@ int att_write_callback(hci_con_handle_t connection_handle, uint16_t att_handle, 
         le_notification_enabled = little_endian_read_16(buffer, 0) == GATT_CLIENT_CHARACTERISTICS_CONFIGURATION_NOTIFICATION;
         con_handle = connection_handle;
         if (le_notification_enabled) {
-            printf("Notifications Enabled!\n");
             att_server_request_can_send_now_event(con_handle);
         } else {
             printf("Notifications Disabled!\n");
@@ -408,7 +401,7 @@ void poll_temp(void) {
     // Typically, Vbe = 0.706V at 27 degrees C, with a slope of -1.721mV (0.001721) per degree. 
     float deg_c = 27 - (reading - 0.706) / 0.001721;
     current_temp = (uint16_t)(deg_c * 100);
-    printf("Write temp %.2f degc\n", deg_c);
+    // printf("Write temp %.2f degc\n", deg_c);
 
     // Shift left to make room for new value
     for (int i = 0; i < PAYLOAD_MULTIPLE - 1; i++) {
