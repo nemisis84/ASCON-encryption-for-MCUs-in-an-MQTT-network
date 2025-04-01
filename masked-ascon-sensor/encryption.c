@@ -83,35 +83,37 @@ void generate_nonce(uint8_t *nonce) {
 
 
 void encrypt(const void *data, size_t data_size, uint8_t *output, size_t *output_len,
-    uint8_t *nonce, const char *associated_data, uint16_t counter) {
-
+             uint8_t *nonce, const char *associated_data, uint16_t counter) {
     size_t ad_len = strnlen(associated_data, 50);
+    
     if (ad_len >= 50) {
         printf("❌ AD length too long or missing null terminator!\n");
         return;
     }
 
     generate_nonce(nonce);
-
+    log_start_encryption_time(counter);
 
     if (SELECTED_ENCRYPTION_MODE == ENCRYPTION_ASCON_MASKED) {
-        log_start_encryption_time(counter);
-        masked_ascon128a_encrypt(output, output_len,
+        unsigned long long clen = 0;
+        masked_ascon128a_encrypt(output, &clen,
             (const uint8_t *)data, data_size,
             (const uint8_t *)associated_data, ad_len,
             nonce);
+        *output_len = (size_t)clen;
     } else if (SELECTED_ENCRYPTION_MODE == ENCRYPTION_ASCON_UNMASKED ||
                SELECTED_ENCRYPTION_MODE == ENCRYPTION_AES_GCM) {
-
-        log_start_encryption_time(counter);
-        crypto_aead_encrypt(output, (unsigned long long *)output_len,
+        unsigned long long clen = 0;
+        crypto_aead_encrypt(output, &clen,
             (const uint8_t *)data, data_size,
             (const uint8_t *)associated_data, ad_len,
             NULL, nonce, key_128);
-    } 
-    
+        *output_len = (size_t)clen;
+    }
+
     log_end_encryption_time(counter);
 }
+
 
 
 int parse_unencrypted(uint8_t *received_data, size_t received_len,

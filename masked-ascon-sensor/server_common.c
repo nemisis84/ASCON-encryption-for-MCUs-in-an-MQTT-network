@@ -37,8 +37,8 @@
 
 
  #define APP_AD_FLAGS 0x06
- #define MAX_PACKET_SIZE 256 // Maximum size of a packet to prevent out-of-memory issues
-
+ #define MAX_PACKET_SIZE HCI_ACL_PAYLOAD_SIZE // Maximum size of a packet to prevent out-of-memory issues
+ #define MAX_PAYLOAD_SIZE 244
 
  static uint8_t adv_data[] = {
      0x02, BLUETOOTH_DATA_TYPE_FLAGS, APP_AD_FLAGS,
@@ -127,7 +127,7 @@ void send_struct_data(void *data, size_t data_size, const char *data_type, trans
         return;
     }
 
-    // printf("📤 Sending %s results (%zu bytes)...\n", data_type, data_size);
+    printf("📤 Sending %s results (%zu bytes)...\n", data_type, data_size);
 
     int mtu_size = att_server_get_mtu(con_handle) - 3;
     int chunk_size = (mtu_size > 200) ? 200 : ((mtu_size > 20) ? mtu_size : 20);
@@ -196,20 +196,27 @@ void send_next_chunk() {
 
  void send_encrypted_temperature() {
     log_start_time(counter);
+    printf("🔒 Sending encrypted temperature...\n");
+    char associated_data[50];
+    snprintf(associated_data, sizeof(associated_data), "|%s|%d", sensor_ID, counter);
+    size_t ad_len = strlen(associated_data);
 
-    uint8_t encrypted_payload[128];  // supports large payload + tag
+    const size_t reserved_meta = NONCE_SIZE + ad_len;
+    const size_t max_encrypted_payload_size = MAX_PAYLOAD_SIZE - reserved_meta;
+
+    uint8_t encrypted_payload[max_encrypted_payload_size];
     size_t encrypted_len;
     uint8_t nonce[NONCE_SIZE];
 
-    char associated_data[50];
-    snprintf(associated_data, sizeof(associated_data), "|%s|%d", sensor_ID, counter);
     encrypt(&current_temps, sizeof(current_temps), encrypted_payload, &encrypted_len,
             nonce, associated_data, counter);
 
-    size_t ad_len = strlen(associated_data);
-    uint8_t final_message[128 + NONCE_SIZE + 50] = {0};
+    printf("Length of encrypted payload: %zu\n", encrypted_len);
+    uint8_t final_message[MAX_PAYLOAD_SIZE] = {0};
     memcpy(final_message, encrypted_payload, encrypted_len);
+    printf("Length of Nonce: %zu\n", sizeof(nonce));
     memcpy(final_message + encrypted_len, nonce, NONCE_SIZE);
+    printf("Length of associated data: %zu\n", ad_len);
     memcpy(final_message + encrypted_len + NONCE_SIZE, associated_data, ad_len);
 
     size_t final_message_len = encrypted_len + NONCE_SIZE + ad_len;
@@ -231,14 +238,17 @@ void send_next_chunk() {
 void send_plaintext_temperature() {
     log_start_time(counter);
 
-    uint8_t plaintext[sizeof(current_temps) + 1];
-
     char associated_data[50];
     snprintf(associated_data, sizeof(associated_data), "|%s|%d", sensor_ID, counter);
     size_t ad_len = strlen(associated_data);
 
-    uint8_t final_message[128 + 50] = {0};
+    const size_t reserved_meta = NONCE_SIZE + ad_len;
+    const size_t max_encrypted_payload_size = MAX_PAYLOAD_SIZE - reserved_meta;
+    uint8_t plaintext[max_encrypted_payload_size];
+
+    uint8_t final_message[MAX_PAYLOAD_SIZE] = {0};
     size_t plaintext_len = sizeof(current_temps);
+
     memcpy(final_message, plaintext, plaintext_len);
     memcpy(final_message + plaintext_len, associated_data, ad_len);
 
@@ -402,7 +412,7 @@ void poll_temp(void) {
     // Typically, Vbe = 0.706V at 27 degrees C, with a slope of -1.721mV (0.001721) per degree. 
     float deg_c = 27 - (reading - 0.706) / 0.001721;
     current_temp = (uint16_t)(deg_c * 100);
-    // printf("Write temp %.2f degc\n", deg_c);
+    printf("Write temp %.2f degc\n", deg_c);
 
     // Shift left to make room for new value
     for (int i = 0; i < PAYLOAD_MULTIPLE - 1; i++) {
