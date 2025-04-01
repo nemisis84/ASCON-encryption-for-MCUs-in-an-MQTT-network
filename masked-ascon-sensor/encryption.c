@@ -164,9 +164,7 @@ int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_
         return parse_unencrypted(received_data, received_len, output, output_len, sequence_number);
     }
 
-    // 🔹 Ensure packet is long enough
-    if (received_len < (TAG_SIZE + NONCE_SIZE + 5)) {  // 5 = min "|X|Y" length
-        printf("❌ Error: Received packet too small\n");
+    if (received_len < (TAG_SIZE + NONCE_SIZE + 5) || received_len > MAX_PAYLOAD_SIZE) { 
         return -1;
     }
 
@@ -224,20 +222,28 @@ int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_
 
     int status = -1;
 
-    if (SELECTED_ENCRYPTION_MODE == ENCRYPTION_ASCON_MASKED) {
-        log_start_decryption_time(*sequence_number);
-        status = masked_ascon128a_decrypt(
-            decrypted_data, output_len,
-            ciphertext, ciphertext_len,
-            (uint8_t *)extracted_ad, ad_len,
-            received_nonce);
-    } else if (SELECTED_ENCRYPTION_MODE == ENCRYPTION_ASCON_UNMASKED ||
-               SELECTED_ENCRYPTION_MODE == ENCRYPTION_AES_GCM) {
-        log_start_decryption_time(*sequence_number);
-        status = crypto_aead_decrypt(decrypted_data, output_len,
-            NULL, ciphertext, ciphertext_len,
-            (uint8_t *)extracted_ad, ad_len,
-            received_nonce, key_128);
+    switch (SELECTED_ENCRYPTION_MODE) {
+        case ENCRYPTION_ASCON_MASKED:
+            log_start_decryption_time(*sequence_number);
+            status = masked_ascon128a_decrypt(
+                decrypted_data, output_len,
+                ciphertext, ciphertext_len,
+                (uint8_t *)extracted_ad, ad_len,
+                received_nonce);
+            break;
+        case ENCRYPTION_ASCON_UNMASKED:
+        case ENCRYPTION_AES_GCM:
+            log_start_decryption_time(*sequence_number);
+            status = crypto_aead_decrypt(decrypted_data, output_len,
+                NULL, ciphertext, ciphertext_len,
+                (uint8_t *)extracted_ad, ad_len,
+                received_nonce, key_128);
+            break;
+        default:
+            log_end_decryption_time(-1);
+            log_end_time(-1);
+            free(decrypted_data);
+            return -1;
     }
     if (status >= 0) {
         *output = decrypted_data;

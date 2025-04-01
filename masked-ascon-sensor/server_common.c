@@ -38,7 +38,7 @@
 
  #define APP_AD_FLAGS 0x06
  #define MAX_PACKET_SIZE HCI_ACL_PAYLOAD_SIZE // Maximum size of a packet to prevent out-of-memory issues
- #define MAX_PAYLOAD_SIZE 244
+
 
  static uint8_t adv_data[] = {
      0x02, BLUETOOTH_DATA_TYPE_FLAGS, APP_AD_FLAGS,
@@ -196,7 +196,7 @@ void send_next_chunk() {
 
  void send_encrypted_temperature() {
     log_start_time(counter);
-    printf("🔒 Sending encrypted temperature...\n");
+
     char associated_data[50];
     snprintf(associated_data, sizeof(associated_data), "|%s|%d", sensor_ID, counter);
     size_t ad_len = strlen(associated_data);
@@ -211,17 +211,15 @@ void send_next_chunk() {
     encrypt(&current_temps, sizeof(current_temps), encrypted_payload, &encrypted_len,
             nonce, associated_data, counter);
 
-    printf("Length of encrypted payload: %zu\n", encrypted_len);
-    uint8_t final_message[MAX_PAYLOAD_SIZE] = {0};
+
+    static uint8_t final_message[MAX_PAYLOAD_SIZE] = {0};
     memcpy(final_message, encrypted_payload, encrypted_len);
-    printf("Length of Nonce: %zu\n", sizeof(nonce));
     memcpy(final_message + encrypted_len, nonce, NONCE_SIZE);
-    printf("Length of associated data: %zu\n", ad_len);
     memcpy(final_message + encrypted_len + NONCE_SIZE, associated_data, ad_len);
 
     size_t final_message_len = encrypted_len + NONCE_SIZE + ad_len;
 
-    pretty_print("Sending encrypted temperature\n", final_message, final_message_len);
+    // pretty_print("Sending encrypted temperature\n", final_message, final_message_len);
 
     int status = att_server_notify(con_handle, ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_VALUE_HANDLE,
         final_message, final_message_len);
@@ -229,7 +227,7 @@ void send_next_chunk() {
     if (status != 0) {
         printf("❌ BLE notification failed! Status: %d, Seq Num: %d\n", status, counter);
     } else {
-        printf("✅ BLE notification sent successfully! Seq Num: %d\n", counter);
+        // printf("✅ BLE notification sent successfully! Seq Num: %d\n", counter);
         counter++;
     }
 
@@ -246,14 +244,14 @@ void send_plaintext_temperature() {
     const size_t max_encrypted_payload_size = MAX_PAYLOAD_SIZE - reserved_meta;
     uint8_t plaintext[max_encrypted_payload_size];
 
-    uint8_t final_message[MAX_PAYLOAD_SIZE] = {0};
+    static uint8_t final_message[MAX_PAYLOAD_SIZE] = {0};
     size_t plaintext_len = sizeof(current_temps);
 
     memcpy(final_message, plaintext, plaintext_len);
     memcpy(final_message + plaintext_len, associated_data, ad_len);
 
     size_t final_message_len = plaintext_len + ad_len;
-    pretty_print("Sending plaintext temperature\n", final_message, final_message_len);
+    // pretty_print("Sending plaintext temperature\n", final_message, final_message_len);
 
     int status = att_server_notify(con_handle, ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_VALUE_HANDLE,
         final_message, final_message_len);
@@ -261,7 +259,7 @@ void send_plaintext_temperature() {
     if (status != 0) {
         printf("❌ BLE notification failed! Status: %d, Seq Num: %d\n", status, counter);
     } else {
-        printf("✅ BLE notification sent successfully! Seq Num: %d\n", counter);
+        // printf("✅ BLE notification sent successfully! Seq Num: %d\n", counter);
         counter++;
     }
 }
@@ -278,7 +276,7 @@ void send_plaintext_temperature() {
              if (btstack_event_state_get_state(packet) != HCI_STATE_WORKING) return;
              bd_addr_t local_addr;
              gap_local_bd_addr(local_addr);
-             printf("BTstack up and running on %s.\n", bd_addr_to_str(local_addr));
+            //  printf("BTstack up and running on %s.\n", bd_addr_to_str(local_addr));
  
              // Setup BLE advertising
              uint16_t adv_int_min = 800;
@@ -308,10 +306,13 @@ void send_plaintext_temperature() {
                 }
              } else {
                  if (active_transfer.data == NULL) {  
+                    //  Sleep for a bit to allow the last packet to be sent
+                     sleep_ms(15000);
                      print_all_results();
                      send_struct_data(RTT_table, sizeof(RTT_table), "RTT", TRANSFER_RTT);
                  } else {
-                     send_next_chunk();
+                    sleep_ms(1000);
+                    send_next_chunk();
                  }
              }
              break;
@@ -355,7 +356,7 @@ void recieve_encrypted_data(uint8_t *received_data, size_t received_len) {
         int num_entries = decrypted_len / sizeof(uint16_t);
         uint16_t *temperatures = (uint16_t *)decrypted_data;
         
-        printf("✅ Decrypted Temperatures successfully! Seq Num: %d\n", sequence_number);
+        // printf("✅ Decrypted Temperatures successfully! Seq Num: %d\n", sequence_number);
         
         free(decrypted_data);
     } else {
@@ -368,7 +369,7 @@ int att_write_callback(hci_con_handle_t connection_handle, uint16_t att_handle, 
     UNUSED(transaction_mode);
     UNUSED(offset);
     UNUSED(buffer_size);
-    printf("🔹 ATT Write Callback Triggered! Handle: 0x%X\n", att_handle);
+    // printf("🔹 ATT Write Callback Triggered! Handle: 0x%X\n", att_handle);
 
     if (att_handle == ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_CLIENT_CONFIGURATION_HANDLE){
         le_notification_enabled = little_endian_read_16(buffer, 0) == GATT_CLIENT_CHARACTERISTICS_CONFIGURATION_NOTIFICATION;
@@ -412,7 +413,7 @@ void poll_temp(void) {
     // Typically, Vbe = 0.706V at 27 degrees C, with a slope of -1.721mV (0.001721) per degree. 
     float deg_c = 27 - (reading - 0.706) / 0.001721;
     current_temp = (uint16_t)(deg_c * 100);
-    printf("Write temp %.2f degc\n", deg_c);
+    // printf("Write temp %.2f degc\n", deg_c);
 
     // Shift left to make room for new value
     for (int i = 0; i < PAYLOAD_MULTIPLE - 1; i++) {
