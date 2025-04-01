@@ -11,6 +11,7 @@
 #include "btstack.h"
 #include "experiment_settings.h"
 #define ADC_CHANNEL_TEMPSENSOR 4
+#define MAX_PAYLOAD_SIZE 244
 
 extern int le_notification_enabled;
 extern hci_con_handle_t con_handle;
