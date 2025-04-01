@@ -25,10 +25,13 @@ class SecureMQTTClient:
 
         # Crypto encryption parameters
 
-        self.crypto_algorithm = "ASCON" if crypto_algorithm_tag.endswith("ASCON") else crypto_algorithm_tag
-        self.key = bytes.fromhex("000102030405060708090A0B0C0D0E0F")
+        self.crypto_algorithm = "ASCON" if crypto_algorithm_tag.endswith(
+            "ASCON") else crypto_algorithm_tag
+
         self.devices = {
             "TEMP-1": bytes.fromhex("000102030405060708090A0B0C0D0E0F")
+        } if crypto_algorithm_tag.endswith("ASCON") else {
+            "TEMP-1": AESGCM(bytes.fromhex("000102030405060708090A0B0C0D0E0F"))
         }
         self.nonce_size = 16 if self.crypto_algorithm == "ASCON" else 12 if self.crypto_algorithm == "AES-GCM" else 0
 
@@ -44,12 +47,16 @@ class SecureMQTTClient:
         self.receive_data_mode = False
         self.receiving_data_type = ""
         self.received_bytes = b""
-        self.encryption_log = pd.DataFrame(columns=["Start_Time", "End_Time"])
-        self.decryption_log = pd.DataFrame(columns=["Start_Time", "End_Time"])
+
+        num_entries = 100
+        self.encryption_log = pd.DataFrame(index=range(num_entries),
+                                           columns=["Start_Time", "End_Time"])
+        self.decryption_log = pd.DataFrame(index=range(num_entries),
+                                           columns=["Start_Time", "End_Time"])
         self.stored = False  # Keeps track of if the datastorage data has been stored
 
-        base_dir = os.path.join(
-            "results", crypto_algorithm_tag + "_scen" + scenario)
+        base_dir = os.path.join("results",
+                                crypto_algorithm_tag + "_scen" + scenario)
         self.results_dir = base_dir
         counter = 1
         while os.path.exists(self.results_dir):
@@ -92,7 +99,7 @@ class SecureMQTTClient:
                     encoded_bytes = decrypted_msg.to_bytes(byte_length,
                                                            byteorder='little')
                     encrypted_message, nonce = self._encrypt_message(
-                        encoded_bytes, associated_data)
+                        encoded_bytes, associated_data=associated_data)
 
                     message = encrypted_message + nonce + associated_data
 
@@ -102,7 +109,7 @@ class SecureMQTTClient:
 
             except Exception as e:
                 print("❌ Error decrypting message:")
-                print(e)
+                print(e.with_traceback())
         else:
             try:
                 payload = msg.payload
@@ -122,7 +129,7 @@ class SecureMQTTClient:
         Parses self.received_bytes (binary data) into structured RTT entries
         and exports the results as a CSV file inside `/results`, with a timestamped filename.
         """
-
+        print("Exporting data...")
         if not self.received_bytes:
             print("❌ No data to export.")
             return
@@ -169,29 +176,30 @@ class SecureMQTTClient:
         if self.receiving_data_type == "DEC":
             sys.exit(0)  # Exit if the data type is DEC
 
-
     def _encrypt_message(
             self,
             message: bytes,
+            reciever: str = "TEMP-1",
             associated_data: bytes = b"BLE-Temp") -> tuple[bytes, bytes]:
         """Encrypts a message using Ascon or AES-GCM-128."""
         nonce = os.urandom(self.nonce_size)
         start_time = time.perf_counter_ns()  # ⏱️ Start time
 
         if self.crypto_algorithm == "ASCON":
-            ciphertext = ascon.ascon_encrypt(self.key,
+            ciphertext = ascon.ascon_encrypt(self.devices[reciever],
                                              nonce,
                                              associated_data,
                                              message,
                                              variant="Ascon-128a")
         elif self.crypto_algorithm == "AES-GCM":
-            aesgcm = AESGCM(self.key)
-            ciphertext = aesgcm.encrypt(nonce, message, associated_data)
+            ciphertext = self.devices[reciever].encrypt(
+                nonce, message, associated_data)
         else:
             raise ValueError("Unsupported crypto_algorithm")
 
         end_time = time.perf_counter_ns()
-        self.encryption_log.loc[len(self.encryption_log)] = {
+        seq_num = int(associated_data.decode().split("|")[-1])
+        self.encryption_log.loc[seq_num] = {
             "Start_Time": start_time,
             "End_Time": end_time,
         }
@@ -231,10 +239,10 @@ class SecureMQTTClient:
             print("Error: Payload too short to contain a valid nonce.")
             return None, None, None
 
-        ad_start_index = payload.rfind(b"|TEMP-")  # Locate the start of AD
-
-        if ad_start_index == -1:
-            print("❌ Error: Associated Data not found in payload.")
+        try:
+            ad_start_index = payload.rindex(b"|TEMP-")
+        except ValueError:
+            print("❌ Error: Associated Data not found.")
             return None, None, None
 
         associated_data = payload[ad_start_index:]  # AD starts from this index
@@ -245,7 +253,10 @@ class SecureMQTTClient:
     def _decrypt_message(self, ciphertext: bytes, nonce: bytes,
                          associated_data: bytes):
         associated_str = associated_data.decode()[1:]
-        device_id = associated_str.split("|")[0]
+        elements = associated_str.split("|")
+        device_id = elements[0]
+        seq_num = int(elements[1])
+
         key = self.devices[device_id]
         start_time = time.perf_counter_ns()
 
@@ -256,13 +267,13 @@ class SecureMQTTClient:
                                             ciphertext,
                                             variant="Ascon-128a")
         elif self.crypto_algorithm == "AES-GCM":
-            aesgcm = AESGCM(key)
-            plaintext = aesgcm.decrypt(nonce, ciphertext, associated_data)
+            plaintext = self.devices[device_id].decrypt(
+                nonce, ciphertext, associated_data)
         else:
             raise ValueError("Unsupported crypto_algorithm")
 
         end_time = time.perf_counter_ns()
-        self.decryption_log.loc[len(self.decryption_log)] = {
+        self.decryption_log.loc[seq_num] = {
             "Start_Time": start_time,
             "End_Time": end_time,
         }
