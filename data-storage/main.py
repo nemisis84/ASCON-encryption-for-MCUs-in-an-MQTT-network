@@ -7,7 +7,7 @@ import pandas as pd
 import struct
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 import sys
-
+import traceback
 
 class SecureMQTTClient:
 
@@ -48,11 +48,14 @@ class SecureMQTTClient:
         self.receiving_data_type = ""
         self.received_bytes = b""
 
-        num_entries = 100
+        num_entries = 10
         self.encryption_log = pd.DataFrame(index=range(num_entries),
                                            columns=["Start_Time", "End_Time"])
         self.decryption_log = pd.DataFrame(index=range(num_entries),
                                            columns=["Start_Time", "End_Time"])
+        self.processing_time = pd.DataFrame(
+            index=range(num_entries),
+            columns=["Start_Time", "End_Time"])
         self.stored = False  # Keeps track of if the datastorage data has been stored
 
         base_dir = os.path.join("results",
@@ -75,14 +78,15 @@ class SecureMQTTClient:
 
     def _on_message(self, client, userdata, msg):
         """Callback when a message is received."""
+        start_processing_time = time.perf_counter_ns()
         if not self.receive_data_mode:
             try:
                 payload = msg.payload
-                print(f"\nMessage received:{payload.hex()}")
+                # print(f"\nMessage received:{payload.hex()}")
                 if self._check_if_data_is_incoming(payload):
                     return
                 if self.crypto_algorithm == "NONE" and self.send_back:
-                    print("No encryption, sending back the message")
+                    # print("No encryption, sending back the message")
                     self.publish(payload, "/ascon-e2e/PICO")
                     return
                 else:
@@ -90,7 +94,7 @@ class SecureMQTTClient:
                         payload)
                     decrypted_msg = self._decrypt_message(
                         ciphertext, nonce, associated_data)
-                    print(f"Decrypted message: {decrypted_msg}")
+                    # print(f"Decrypted message: {decrypted_msg}")
 
                 if self.send_back:
 
@@ -104,16 +108,21 @@ class SecureMQTTClient:
                     message = encrypted_message + nonce + associated_data
 
                     self.publish(message, "/ascon-e2e/PICO")
+                    
 
-                    print(f"Encrypted message sent back: {message}")
-
-            except Exception as e:
-                print("❌ Error decrypting message:")
-                print(e.with_traceback())
+                    # print(f"Encrypted message sent back: {message}")
+                end_proccesing_time = time.perf_counter_ns()
+                seq_num = int(associated_data.decode().split("|")[-1])
+                self.processing_time.loc[seq_num] = {
+                    "Start_Time": start_processing_time,
+                    "End_Time": end_proccesing_time,
+                }
+            except Exception:
+                traceback.print_exc()
         else:
             try:
                 payload = msg.payload
-                print(f"Recived data: {payload.hex()}")
+                # print(f"Recived data: {payload.hex()}")
                 sequence_number = payload[0]
                 # The rest of the bytes are the payload
                 self.received_bytes += payload[1:]
@@ -123,6 +132,7 @@ class SecureMQTTClient:
 
             except Exception as e:
                 print(e)
+
 
     def _export_data(self):
         """
@@ -159,6 +169,8 @@ class SecureMQTTClient:
                                        index=False)
             self.decryption_log.to_csv(self.results_dir + "/DS_DEC.csv",
                                        index=False)
+            self.processing_time.to_csv(self.results_dir + "/DS_PROC.csv",
+                                        index=False)
             self.stored = True
 
         # Generate a timestamped filename
@@ -173,8 +185,8 @@ class SecureMQTTClient:
         self.received_bytes = b""  # Reset the received bytes
         self.receive_data_mode = False
 
-        if self.receiving_data_type == "DEC":
-            sys.exit(0)  # Exit if the data type is DEC
+        if self.receiving_data_type == "S_PROC": # Last entry
+            sys.exit(0)
 
     def _encrypt_message(
             self,
@@ -209,9 +221,8 @@ class SecureMQTTClient:
     def _check_if_data_is_incoming(self, payload):
         # Convert payload to string for easier processing
         payload_str = payload.decode("utf-8", errors="ignore")
-
         # Define the allowed data types
-        data_types = {"RTT", "ENC", "DEC"}
+        data_types = {"RTT", "ENC", "DEC", "R_PROC", "S_PROC", "US_PROC", "DS_PROC"}
 
         if "|" in payload_str:
             main_data, suffix = payload_str.rsplit("|", 1)

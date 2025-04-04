@@ -67,13 +67,20 @@ static uint_fast16_t counter = 0;
 data_entry RTT_table[MAX_PACKETS];
 data_entry encryption_times[MAX_PACKETS];
 data_entry decryption_times[MAX_PACKETS];
+data_entry sending_processing_times[MAX_PACKETS];
+data_entry receiving_processing_times[MAX_PACKETS];
 
 // Function to log the start time
 void log_start_time(uint16_t seq_num) {
-    if (seq_num >= MAX_PACKETS || seq_num <0) return;
+    if (seq_num >= MAX_PACKETS || seq_num < 0) return;
+
+    uint64_t start_time = (uint64_t)time_us_64();  // Get the current timestamp once
 
     RTT_table[seq_num].seq_num = seq_num;
-    RTT_table[seq_num].start_time = (uint64_t)time_us_64();  // Example with seconds (use microseconds for precision)
+    RTT_table[seq_num].start_time = start_time;  // Use the same timestamp for RTT_table
+
+    sending_processing_times[seq_num].seq_num = seq_num;
+    sending_processing_times[seq_num].start_time = start_time;  // Use the same timestamp for processing_times
 }
 
 // Function to log the end time
@@ -83,12 +90,36 @@ void log_end_time(uint16_t seq_num) {
     RTT_table[seq_num].end_time = (uint64_t)time_us_64();
 }
 
+void log_end_sending_processing_time(uint16_t seq_num) {
+    if (seq_num >= MAX_PACKETS || seq_num < 0) return;
+
+    sending_processing_times[seq_num].end_time = (uint64_t)time_us_64();
+}
+
+uint64_t get_start_recieving_processing_time() {
+    return (uint64_t)time_us_64();
+}
+
+void log_start_recieving_processing_time(uint16_t seq_num, uint64_t start_time) {
+    if (seq_num >= MAX_PACKETS || seq_num < 0) return;
+
+    receiving_processing_times[seq_num].seq_num = seq_num;
+    receiving_processing_times[seq_num].start_time = start_time;
+}
+
+void log_end_recieving_processing_time(uint16_t seq_num) {
+    if (seq_num >= MAX_PACKETS || seq_num < 0) return;
+
+    receiving_processing_times[seq_num].end_time = (uint64_t)time_us_64();
+}
+
 
 typedef enum {
-    TRANSFER_NONE,
     TRANSFER_RTT,
     TRANSFER_ENC,
-    TRANSFER_DEC
+    TRANSFER_DEC,
+    TRANSFER_S_PROC,
+    TRANSFER_R_PROC,
 } transfer_state_t;
 
 typedef struct {
@@ -118,7 +149,18 @@ void print_all_results() {
     for (int i = 0; i < MAX_PACKETS; i++) {
         printf("DEC %2d → Start: %llu, End: %llu\n", i, decryption_times[i].start_time, decryption_times[i].end_time);
     }
+
+    printf("\n📥 Receiving Processing Times:\n");
+    for (int i = 0; i < MAX_PACKETS; i++) {
+        printf("RECV %2d → Start: %llu, End: %llu\n", i, receiving_processing_times[i].start_time, receiving_processing_times[i].end_time);
+    }
+
+    printf("\n📤 Sending Processing Times:\n");
+    for (int i = 0; i < MAX_PACKETS; i++) {
+        printf("SEND %2d → Start: %llu, End: %llu\n", i, sending_processing_times[i].start_time, sending_processing_times[i].end_time);
+    }
 }
+
 
 
 void send_struct_data(void *data, size_t data_size, const char *data_type, transfer_state_t transfer_type) {
@@ -166,8 +208,12 @@ void send_next_chunk() {
             send_struct_data(encryption_times, sizeof(encryption_times), "ENC", TRANSFER_ENC);
         } else if (active_transfer.transfer_type == TRANSFER_ENC) {
             send_struct_data(decryption_times, sizeof(decryption_times), "DEC", TRANSFER_DEC);
+        } else if (active_transfer.transfer_type == TRANSFER_DEC) {
+            send_struct_data(receiving_processing_times, sizeof(receiving_processing_times), "R_PROC", TRANSFER_R_PROC);
+        } else if (active_transfer.transfer_type == TRANSFER_R_PROC) {
+            send_struct_data(sending_processing_times, sizeof(sending_processing_times), "S_PROC", TRANSFER_S_PROC);
         } else {
-            printf("✅ All BLE transfers complete!\n");
+            printf("All BLE transfers complete!\n");
             abort();
         }
         return;
@@ -227,10 +273,9 @@ void send_next_chunk() {
     if (status != 0) {
         printf("❌ BLE notification failed! Status: %d, Seq Num: %d\n", status, counter);
     } else {
-        // printf("✅ BLE notification sent successfully! Seq Num: %d\n", counter);
+        log_end_sending_processing_time(counter);
         counter++;
     }
-
 }
 
 void send_plaintext_temperature() {
@@ -259,7 +304,7 @@ void send_plaintext_temperature() {
     if (status != 0) {
         printf("❌ BLE notification failed! Status: %d, Seq Num: %d\n", status, counter);
     } else {
-        // printf("✅ BLE notification sent successfully! Seq Num: %d\n", counter);
+        log_end_sending_processing_time(counter);
         counter++;
     }
 }
@@ -305,13 +350,13 @@ void send_plaintext_temperature() {
                     send_plaintext_temperature();
                 }
              } else {
-                 if (active_transfer.data == NULL) {  
+                 if (active_transfer.data == NULL) {
                     //  Sleep for a bit to allow the last packet to be sent
-                     sleep_ms(15000);
+                     sleep_ms(5000);
                      print_all_results();
                      send_struct_data(RTT_table, sizeof(RTT_table), "RTT", TRANSFER_RTT);
                  } else {
-                    sleep_ms(1000);
+                    sleep_ms(100);
                     send_next_chunk();
                  }
              }
@@ -334,17 +379,16 @@ void send_plaintext_temperature() {
     return 0;
 }
 
-void recieve_encrypted_data(uint8_t *received_data, size_t received_len) {
+void recieve_encrypted_data(uint8_t *received_data, size_t received_len, uint16_t *sequence_number) {
     uint8_t *decrypted_data = NULL;
     size_t decrypted_len = 0;
-    uint16_t sequence_number = 0;
 
     if (received_len > MAX_PACKET_SIZE) {
         printf("Received packet is too large! Rejecting.\n");
         return;
     }
     
-    int status = decrypt(received_data, received_len, &decrypted_data, &decrypted_len, &sequence_number);
+    int status = decrypt(received_data, received_len, &decrypted_data, &decrypted_len, sequence_number);
 
     if (status == 0) {
         if (decrypted_len % sizeof(uint16_t) != 0) {
@@ -366,6 +410,7 @@ void recieve_encrypted_data(uint8_t *received_data, size_t received_len) {
 
 
 int att_write_callback(hci_con_handle_t connection_handle, uint16_t att_handle, uint16_t transaction_mode, uint16_t offset, uint8_t *buffer, uint16_t buffer_size) {
+    uint64_t start_time = get_start_recieving_processing_time();
     UNUSED(transaction_mode);
     UNUSED(offset);
     UNUSED(buffer_size);
@@ -385,7 +430,10 @@ int att_write_callback(hci_con_handle_t connection_handle, uint16_t att_handle, 
     if (att_handle == ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_VALUE_HANDLE) {
         if (buffer_size > 0) {
             // Decrypt and print data
-            recieve_encrypted_data(buffer, buffer_size);
+            uint16_t sequence_number = 0;
+            recieve_encrypted_data(buffer, buffer_size, &sequence_number);
+            log_end_recieving_processing_time(sequence_number);
+            log_start_recieving_processing_time(sequence_number, start_time);
         } else {
             printf("Empty Data Received!\n");
         }

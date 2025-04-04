@@ -10,25 +10,25 @@
 #define SELECTED_SCENARIO     1
 
 // Set MAX_PACKETS globally
-#define MAX_PACKETS           100
+#define MAX_PACKETS           10
 
 // Scenario switch
  // 2 byte, 10 seconds
 #if SELECTED_SCENARIO == 1
     #define PAYLOAD_MULTIPLE 1
-    #define TRANSMISSION_INTERVAL_MS INTERVAL_500_MS
+    #define TRANSMISSION_INTERVAL_MS INTERVAL_1_SECOND
  // 10 bytes, 10 seconds
 #elif SELECTED_SCENARIO == 2
     #define PAYLOAD_MULTIPLE     5 
-    #define TRANSMISSION_INTERVAL_MS INTERVAL_500_MS
+    #define TRANSMISSION_INTERVAL_MS INTERVAL_1_SECOND
  // 100 bytes, 10 seconds
 #elif SELECTED_SCENARIO == 3
     #define PAYLOAD_MULTIPLE     50 
-    #define TRANSMISSION_INTERVAL_MS INTERVAL_500_MS
+    #define TRANSMISSION_INTERVAL_MS INTERVAL_1_SECOND
  // 2 bytes, 1 second
 #elif SELECTED_SCENARIO == 4
-    #define PAYLOAD_MULTIPLE     100
-    #define TRANSMISSION_INTERVAL_MS INTERVAL_500_MS
+    #define PAYLOAD_MULTIPLE     105
+    #define TRANSMISSION_INTERVAL_MS INTERVAL_1_SECOND
  // 10 bytes, 1 second
 #elif SELECTED_SCENARIO == 5
     #define PAYLOAD_MULTIPLE     1 
