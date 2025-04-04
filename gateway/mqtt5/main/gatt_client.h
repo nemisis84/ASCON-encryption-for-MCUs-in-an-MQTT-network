@@ -16,7 +16,7 @@ void ble_init(void *pvParameters);
  * 
  * This function sends data to the BLE GATT server.
  */
-void ble_forward(uint8_t *data, size_t len);
+void ble_forward(uint8_t *data, size_t len, uint64_t t_start);
 /**
  * @brief BLE event handler for scanning and connection updates.
  * 
@@ -24,5 +24,18 @@ void ble_forward(uint8_t *data, size_t len);
  * connection establishment, and data reception.
  */
 void ble_event_handler(void* param);
+
+typedef struct {
+    uint16_t seq_num;
+    uint64_t start_time;
+    uint64_t end_time;
+} data_entry_t;
+
+#define MAX_BLE_ENTRIES 10
+extern data_entry_t upstream_timings[MAX_BLE_ENTRIES];
+extern data_entry_t downstream_timings[MAX_BLE_ENTRIES];
+
+int extract_sequence_number(const uint8_t *data, size_t len);
+
 
 #endif // GATT_CLIENT_H

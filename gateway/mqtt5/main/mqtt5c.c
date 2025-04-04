@@ -17,11 +17,15 @@
  #include "mqtt_client.h"
  #include "mqtt5c.h"
  #include "gatt_client.h"
+ #include "esp_timer.h"
  
  static const char *TAG = "mqtt5_example";
  
  static esp_mqtt_client_handle_t client = NULL;
  
+ data_entry_t upstream_timings[MAX_BLE_ENTRIES] = {0};
+
+
  static void log_error_if_nonzero(const char *message, int error_code)
  {
      if (error_code != 0) {
@@ -93,6 +97,8 @@
 
  void mqtt_ble_forward(const char *topic, int topic_len, const char *data, int data_len) {
     
+    uint64_t t_start = esp_timer_get_time();
+
     if (topic == NULL || data == NULL || topic_len <= 0 || data_len <= 0) {
         ESP_LOGE(TAG, "❌ Invalid input to ble_forward");
         return;
@@ -112,8 +118,8 @@
         return;
     }
 
-    ESP_LOGI(TAG, "🔹 Forwarding MQTT message to BLE (%d bytes)", data_len);
-    ble_forward((uint8_t *)data, data_len);
+    // ESP_LOGI(TAG, "🔹 Forwarding MQTT message to BLE (%d bytes)", data_len);
+    ble_forward((uint8_t *)data, data_len, t_start);
 }
 
 
@@ -131,11 +137,11 @@
   */
  void mqtt5_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data)
  {
-     ESP_LOGD(TAG, "Event dispatched from event loop base=%s, event_id=%" PRIi32, base, event_id);
+    //  ESP_LOGD(TAG, "Event dispatched from event loop base=%s, event_id=%" PRIi32, base, event_id);
      esp_mqtt_event_handle_t event = event_data;
      int msg_id;
  
-     ESP_LOGD(TAG, "free heap size is %" PRIu32 ", minimum %" PRIu32, esp_get_free_heap_size(), esp_get_minimum_free_heap_size());
+    //  ESP_LOGD(TAG, "free heap size is %" PRIu32 ", minimum %" PRIu32, esp_get_free_heap_size(), esp_get_minimum_free_heap_size());
      switch ((esp_mqtt_event_id_t)event_id) {
      case MQTT_EVENT_CONNECTED:
          ESP_LOGI(TAG, "MQTT_EVENT_CONNECTED");
@@ -172,10 +178,10 @@
         //  print_user_property(event->property->user_property);
          break;
     case MQTT_EVENT_DATA:
-         ESP_LOGI(TAG, "MQTT_EVENT_DATA");
+        //  ESP_LOGI(TAG, "MQTT_EVENT_DATA");
         //  print_user_property(event->property->user_property);
-         ESP_LOGI(TAG, "TOPIC=%.*s", event->topic_len, event->topic);
-         ESP_LOGI(TAG, "DATA=%.*s", event->data_len, event->data);
+        //  ESP_LOGI(TAG, "TOPIC=%.*s", event->topic_len, event->topic);
+        //  ESP_LOGI(TAG, "DATA=%.*s", event->data_len, event->data);
      
          mqtt_ble_forward(event->topic, event->topic_len, event->data, event->data_len);
          break;
@@ -197,19 +203,32 @@
  }
  
  
- void mqtt_publish(const char *topic, const char *data, size_t len) {
+ void mqtt_publish(const char *topic, const char *data, size_t len, uint64_t t_start) {
      if (client == NULL) {
          ESP_LOGE(TAG, "MQTT client not initialized.");
          return;
      }
 
     //  ESP_LOGI(TAG, "🔹 MQTT Debug: Data Before Publish (Raw HEX)");
-     ESP_LOG_BUFFER_HEX(TAG, data, len);  
+    //  ESP_LOG_BUFFER_HEX(TAG, data, len);  
 
-     int msg_id = esp_mqtt_client_publish(client, topic, (const char *)data, len, 1, 0);
+    int msg_id = esp_mqtt_client_publish(client, topic, (const char *)data, len, 1, 0);
+    int seq_num = extract_sequence_number((const uint8_t *)data, len);
+
+
+    if (seq_num < MAX_BLE_ENTRIES && t_start != 0) {
+        upstream_timings[seq_num].seq_num = seq_num;
+        if (upstream_timings[seq_num].start_time == 0) {
+            upstream_timings[seq_num].start_time = t_start;
+        }
+        if (upstream_timings[seq_num].end_time == 0) {
+            upstream_timings[seq_num].end_time = esp_timer_get_time();
+        }
+    }
+
     //  ESP_LOGI(TAG, "Published message to %s: %s (msg_id=%d)", topic, data, msg_id);
  }
- 
+
  
  void mqtt5_app_start(void *pvParameters)
  {
