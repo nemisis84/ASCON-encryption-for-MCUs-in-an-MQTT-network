@@ -221,9 +221,8 @@ class SecureMQTTClient:
     def _check_if_data_is_incoming(self, payload):
         # Convert payload to string for easier processing
         payload_str = payload.decode("utf-8", errors="ignore")
-
         # Define the allowed data types
-        data_types = {"RTT", "ENC", "DEC", "R_PROC", "S_PROC"}
+        data_types = {"RTT", "ENC", "DEC", "R_PROC", "S_PROC", "US_PROC", "DS_PROC"}
 
         if "|" in payload_str:
             main_data, suffix = payload_str.rsplit("|", 1)

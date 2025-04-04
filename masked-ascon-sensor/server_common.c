@@ -352,7 +352,7 @@ void send_plaintext_temperature() {
              } else {
                  if (active_transfer.data == NULL) {
                     //  Sleep for a bit to allow the last packet to be sent
-                     sleep_ms(100);
+                     sleep_ms(5000);
                      print_all_results();
                      send_struct_data(RTT_table, sizeof(RTT_table), "RTT", TRANSFER_RTT);
                  } else {
