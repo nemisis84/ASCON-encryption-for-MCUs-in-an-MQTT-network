@@ -14,25 +14,18 @@
 #include "experiment_settings.h"
 #include "server_common.h"
 
-#define HEARTBEAT_PERIOD_MS 100 //Heartbeat every 0.1 second
+#define HEARTBEAT_PERIOD_MS TRANSMISSION_INTERVAL_MS
 
 
 static btstack_timer_source_t heartbeat;
 static btstack_packet_callback_registration_t hci_event_callback_registration;
-static uint32_t counter = 0;
-int notification_interval = TRANSMISSION_INTERVAL_MS / HEARTBEAT_PERIOD_MS;
-
 
 static void heartbeat_handler(struct btstack_timer_source *ts) {
     
-    counter++;
-
     poll_temp(); // Poll the temperature sensor
 
-    if (counter % notification_interval == 0) {
-        if (le_notification_enabled) { // If BLE notifications are enabled
-            att_server_request_can_send_now_event(con_handle); // Send the temperature value
-        }
+    if (le_notification_enabled) { // If BLE notifications are enabled
+        att_server_request_can_send_now_event(con_handle); // Send the temperature value
     }
 
     // Invert the led
