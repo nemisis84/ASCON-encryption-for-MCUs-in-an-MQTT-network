@@ -122,7 +122,7 @@ class SecureMQTTClient:
         else:
             try:
                 payload = msg.payload
-                # print(f"Recived data: {payload.hex()}")
+                # print(f"Received data: {payload.hex()}")
                 sequence_number = payload[0]
                 # The rest of the bytes are the payload
                 self.received_bytes += payload[1:]
