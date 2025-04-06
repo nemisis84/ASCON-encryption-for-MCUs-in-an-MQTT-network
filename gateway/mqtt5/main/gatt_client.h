@@ -31,9 +31,10 @@ typedef struct {
     uint64_t end_time;
 } data_entry_t;
 
-#define MAX_BLE_ENTRIES 10
-extern data_entry_t upstream_timings[MAX_BLE_ENTRIES];
-extern data_entry_t downstream_timings[MAX_BLE_ENTRIES];
+#define MAX_BLE_ENTRIES 100
+extern data_entry_t *upstream_timings;
+extern data_entry_t *downstream_timings;
+
 
 int extract_sequence_number(const uint8_t *data, size_t len);
 

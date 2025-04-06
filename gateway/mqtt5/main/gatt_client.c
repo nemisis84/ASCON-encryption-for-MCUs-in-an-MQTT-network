@@ -53,8 +53,6 @@ static void esp_gap_cb(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
 static void esp_gattc_cb(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp_ble_gattc_cb_param_t *param);
 static void gattc_profile_event_handler(esp_gattc_cb_event_t event, esp_gatt_if_t gattc_if, esp_ble_gattc_cb_param_t *param);
 
-data_entry_t downstream_timings[MAX_BLE_ENTRIES] = {0};
-
 
 static esp_bt_uuid_t remote_filter_service_uuid = {
     .len = ESP_UUID_LEN_16,
@@ -507,7 +505,7 @@ int extract_sequence_number(const uint8_t *data, size_t len) {
 
 void ble_forward(uint8_t *data, size_t len, uint64_t t_start) {
 
-    // ESP_LOGI(GATTC_TAG, "🔹 Sending BLE data: %.*s", len, data);
+    // ESP_LOGI(GATTC_TAG, "🔹Forward message to sensor: %.*s", len, data);
     // ESP_LOGI(GATTC_TAG, "🔹 Writing to Characteristic Handle: %d", gl_profile_tab[PICO_APP_ID].char_handle);
 
     // ✅ Send data to the characteristic
@@ -533,31 +531,44 @@ void ble_forward(uint8_t *data, size_t len, uint64_t t_start) {
         }
     }
 
-    if (MAX_BLE_ENTRIES-1 == seq_num) {
-        ESP_LOGE(GATTC_TAG, "sending LOGGING data to MQTT broker");
+    if (seq_num == MAX_BLE_ENTRIES - 1) {
+        ESP_LOGI(GATTC_TAG, "📤 Sending LOGGING data to MQTT broker...");
+    
+        // Downstream marker
         const char *ds_start_msg = "|GW|DS_PROC";
         mqtt_publish("/ascon-e2e/data-storage", ds_start_msg, strlen(ds_start_msg), 0);
-        ESP_LOGE(GATTC_TAG, "Sending message to MQTT broker: %s", ds_start_msg);
-        uint8_t ds_payload[1 + sizeof(downstream_timings)];
-        ds_payload[0] = 0x00;
-        memcpy(ds_payload + 1, downstream_timings, sizeof(downstream_timings));
-        mqtt_publish("/ascon-e2e/data-storage", (char *)ds_payload, sizeof(ds_payload), 0);
-
+        // ESP_LOGI(GATTC_TAG, "Published marker: %s", ds_start_msg);
+    
+        // Downstream payload
+        size_t ds_size = MAX_BLE_ENTRIES * sizeof(data_entry_t);
+        uint8_t *ds_payload = malloc(1 + ds_size);
+        if (ds_payload) {
+            ds_payload[0] = 0x00;
+            memcpy(ds_payload + 1, downstream_timings, ds_size);
+            mqtt_publish("/ascon-e2e/data-storage", (char *)ds_payload, 1 + ds_size, 0);
+            free(ds_payload);
+        } else {
+            ESP_LOGE(GATTC_TAG, "❌ Failed to allocate memory for downstream timings");
+        }
+    
+        // Upstream marker
         const char *us_start_msg = "|GW|US_PROC";
         mqtt_publish("/ascon-e2e/data-storage", us_start_msg, strlen(us_start_msg), 0);
-        ESP_LOGE(GATTC_TAG, "Sending message to MQTT broker: %s", us_start_msg);
-        uint8_t us_payload[1 + sizeof(upstream_timings)];
-        us_payload[0] = 0x00;
-        memcpy(us_payload + 1, upstream_timings, sizeof(upstream_timings));
-        mqtt_publish("/ascon-e2e/data-storage", (char *)us_payload, sizeof(us_payload), 0);
+        ESP_LOGI(GATTC_TAG, "Published marker: %s", us_start_msg);
+    
+        // Upstream payload
+        size_t us_size = MAX_BLE_ENTRIES * sizeof(data_entry_t);
+        uint8_t *us_payload = malloc(1 + us_size);
+        if (us_payload) {
+            us_payload[0] = 0x00;
+            memcpy(us_payload + 1, upstream_timings, us_size);
+            mqtt_publish("/ascon-e2e/data-storage", (char *)us_payload, 1 + us_size, 0);
+            free(us_payload);
+        } else {
+            ESP_LOGE(GATTC_TAG, "❌ Failed to allocate memory for upstream timings");
+        }
     }
-
-
-    // if (err != ESP_OK) {
-    //     ESP_LOGE(GATTC_TAG, "❌ BLE Write Failed: %s", esp_err_to_name(err));
-    // } else {
-    //     ESP_LOGI(GATTC_TAG, "✅ BLE Write Success!");
-    // }
+    
 }
 
 void ble_init(void *pvParameters) {
