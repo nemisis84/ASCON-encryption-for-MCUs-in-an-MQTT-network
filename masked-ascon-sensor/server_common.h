@@ -24,8 +24,12 @@ typedef struct {
     uint64_t end_time;
 } data_entry;
 
-extern data_entry encryption_times[MAX_PACKETS];
-extern data_entry decryption_times[MAX_PACKETS];
+extern data_entry *encryption_times;
+extern data_entry *decryption_times;
+extern data_entry *sending_processing_times;
+extern data_entry *receiving_processing_times;
+extern data_entry *RTT_table;
+
 
 typedef struct {
     uint16_t values[PAYLOAD_MULTIPLE];
@@ -36,4 +40,6 @@ uint16_t att_read_callback(hci_con_handle_t connection_handle, uint16_t att_hand
 int att_write_callback(hci_con_handle_t connection_handle, uint16_t att_handle, uint16_t transaction_mode, uint16_t offset, uint8_t *buffer, uint16_t buffer_size);
 void poll_temp(void);
 void log_end_time(uint16_t seq_num);
+
+void init_timing_logging();
 #endif

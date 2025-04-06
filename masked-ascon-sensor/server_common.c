@@ -64,11 +64,26 @@
 
 static uint_fast16_t counter = 0;
 
-data_entry RTT_table[MAX_PACKETS];
-data_entry encryption_times[MAX_PACKETS];
-data_entry decryption_times[MAX_PACKETS];
-data_entry sending_processing_times[MAX_PACKETS];
-data_entry receiving_processing_times[MAX_PACKETS];
+data_entry *encryption_times = NULL;
+data_entry *decryption_times = NULL;
+data_entry *sending_processing_times = NULL;
+data_entry *receiving_processing_times = NULL;
+data_entry *RTT_table = NULL;
+
+
+void init_timing_logging() {
+    encryption_times = calloc(MAX_PACKETS, sizeof(data_entry));
+    decryption_times = calloc(MAX_PACKETS, sizeof(data_entry));
+    sending_processing_times = calloc(MAX_PACKETS, sizeof(data_entry));
+    receiving_processing_times = calloc(MAX_PACKETS, sizeof(data_entry));
+    RTT_table = calloc(MAX_PACKETS, sizeof(data_entry));
+
+    if (!encryption_times || !decryption_times || !sending_processing_times ||
+        !receiving_processing_times || !RTT_table) {
+        printf("❌ Failed to allocate timing arrays\n");
+        while (1); // Halt for debug
+    }
+}
 
 // Function to log the start time
 void log_start_time(uint16_t seq_num) {
@@ -94,10 +109,6 @@ void log_end_sending_processing_time(uint16_t seq_num) {
     if (seq_num >= MAX_PACKETS || seq_num < 0) return;
 
     sending_processing_times[seq_num].end_time = (uint64_t)time_us_64();
-}
-
-uint64_t get_start_recieving_processing_time() {
-    return (uint64_t)time_us_64();
 }
 
 void log_start_recieving_processing_time(uint16_t seq_num, uint64_t start_time) {
@@ -205,13 +216,13 @@ void send_next_chunk() {
 
         // Move to the next struct after RTT -> ENC -> DEC
         if (active_transfer.transfer_type == TRANSFER_RTT) {
-            send_struct_data(encryption_times, sizeof(encryption_times), "ENC", TRANSFER_ENC);
+            send_struct_data(encryption_times, MAX_PACKETS * sizeof(data_entry), "ENC", TRANSFER_ENC);
         } else if (active_transfer.transfer_type == TRANSFER_ENC) {
-            send_struct_data(decryption_times, sizeof(decryption_times), "DEC", TRANSFER_DEC);
+            send_struct_data(decryption_times, MAX_PACKETS * sizeof(data_entry), "DEC", TRANSFER_DEC);
         } else if (active_transfer.transfer_type == TRANSFER_DEC) {
-            send_struct_data(receiving_processing_times, sizeof(receiving_processing_times), "R_PROC", TRANSFER_R_PROC);
+            send_struct_data(receiving_processing_times, MAX_PACKETS * sizeof(data_entry), "R_PROC", TRANSFER_R_PROC);
         } else if (active_transfer.transfer_type == TRANSFER_R_PROC) {
-            send_struct_data(sending_processing_times, sizeof(sending_processing_times), "S_PROC", TRANSFER_S_PROC);
+            send_struct_data(sending_processing_times, MAX_PACKETS * sizeof(data_entry), "S_PROC", TRANSFER_S_PROC);
         } else {
             printf("All BLE transfers complete!\n");
             abort();
@@ -265,7 +276,7 @@ void send_next_chunk() {
 
     size_t final_message_len = encrypted_len + NONCE_SIZE + ad_len;
 
-    // pretty_print("Sending encrypted temperature\n", final_message, final_message_len);
+    
 
     int status = att_server_notify(con_handle, ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_VALUE_HANDLE,
         final_message, final_message_len);
@@ -354,7 +365,7 @@ void send_plaintext_temperature() {
                     //  Sleep for a bit to allow the last packet to be sent
                      sleep_ms(5000);
                      print_all_results();
-                     send_struct_data(RTT_table, sizeof(RTT_table), "RTT", TRANSFER_RTT);
+                     send_struct_data(RTT_table, MAX_PACKETS * sizeof(data_entry), "RTT", TRANSFER_RTT);
                  } else {
                     sleep_ms(100);
                     send_next_chunk();
@@ -410,7 +421,7 @@ void recieve_encrypted_data(uint8_t *received_data, size_t received_len, uint16_
 
 
 int att_write_callback(hci_con_handle_t connection_handle, uint16_t att_handle, uint16_t transaction_mode, uint16_t offset, uint8_t *buffer, uint16_t buffer_size) {
-    uint64_t start_time = get_start_recieving_processing_time();
+    uint64_t start_time = (uint64_t)time_us_64();
     UNUSED(transaction_mode);
     UNUSED(offset);
     UNUSED(buffer_size);
