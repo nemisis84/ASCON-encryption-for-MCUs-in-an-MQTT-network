@@ -8,6 +8,10 @@
 
 static const char *TAG = "MAIN_APP";
 
+data_entry_t *upstream_timings = NULL;
+data_entry_t *downstream_timings = NULL;
+
+
 esp_netif_ip_info_t ip_info;
 
 // Function to check if Wi-Fi is connected
@@ -58,9 +62,20 @@ void ble_task(void *pvParameters) {
 }
 
 
+void init_processing_logging(){
+    upstream_timings = calloc(MAX_BLE_ENTRIES, sizeof(data_entry_t));
+    downstream_timings = calloc(MAX_BLE_ENTRIES, sizeof(data_entry_t));
+
+    if (!upstream_timings || !downstream_timings) {
+        ESP_LOGE(TAG, "Failed to allocate memory for timing structs");
+        abort();
+    }
+}
+
 void app_main(void *pvParameters) {
     ESP_LOGI(TAG, "Starting system...");
 
+    init_processing_logging();
 
     // Initialize Wi-Fi (WPA2 Enterprise)
     ESP_LOGI(TAG, "Connecting to Wi-Fi...");

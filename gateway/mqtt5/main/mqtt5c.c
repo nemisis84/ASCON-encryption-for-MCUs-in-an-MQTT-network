@@ -22,8 +22,6 @@
  static const char *TAG = "mqtt5_example";
  
  static esp_mqtt_client_handle_t client = NULL;
- 
- data_entry_t upstream_timings[MAX_BLE_ENTRIES] = {0};
 
 
  static void log_error_if_nonzero(const char *message, int error_code)
@@ -118,7 +116,8 @@
         return;
     }
 
-    // ESP_LOGI(TAG, "🔹 Forwarding MQTT message to BLE (%d bytes)", data_len);
+    ESP_LOGI(TAG, "🔹 Forwarding MQTT message to BLE (%d bytes)", data_len);
+    ESP_LOGI(TAG, "Forwarding message: %.*s", data_len, data);
     ble_forward((uint8_t *)data, data_len, t_start);
 }
 
@@ -209,12 +208,12 @@
          return;
      }
 
-    //  ESP_LOGI(TAG, "🔹 MQTT Debug: Data Before Publish (Raw HEX)");
-    //  ESP_LOG_BUFFER_HEX(TAG, data, len);  
+     ESP_LOGI(TAG, "🔹 MQTT Debug: Data Before Publish (Raw HEX)");
+     ESP_LOG_BUFFER_HEX(TAG, data, len);  
 
     int msg_id = esp_mqtt_client_publish(client, topic, (const char *)data, len, 1, 0);
+    
     int seq_num = extract_sequence_number((const uint8_t *)data, len);
-
 
     if (seq_num < MAX_BLE_ENTRIES && t_start != 0) {
         upstream_timings[seq_num].seq_num = seq_num;
