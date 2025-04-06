@@ -81,7 +81,7 @@ void init_timing_logging() {
     if (!encryption_times || !decryption_times || !sending_processing_times ||
         !receiving_processing_times || !RTT_table) {
         printf("❌ Failed to allocate timing arrays\n");
-        while (1); // Halt for debug
+        abort();
     }
 }
 
