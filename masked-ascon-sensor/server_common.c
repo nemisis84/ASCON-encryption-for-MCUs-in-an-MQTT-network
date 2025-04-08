@@ -101,8 +101,9 @@ void log_start_time(uint16_t seq_num) {
 // Function to log the end time
 void log_end_time(uint16_t seq_num) {
     if (seq_num >= MAX_PACKETS || seq_num <0) return;
-
-    RTT_table[seq_num].end_time = (uint64_t)time_us_64();
+    uint64_t end_time = (uint64_t)time_us_64();
+    RTT_table[seq_num].end_time = end_time;
+    receiving_processing_times[seq_num].end_time = end_time;
 }
 
 void log_end_sending_processing_time(uint16_t seq_num) {
@@ -116,12 +117,6 @@ void log_start_recieving_processing_time(uint16_t seq_num, uint64_t start_time) 
 
     receiving_processing_times[seq_num].seq_num = seq_num;
     receiving_processing_times[seq_num].start_time = start_time;
-}
-
-void log_end_recieving_processing_time(uint16_t seq_num) {
-    if (seq_num >= MAX_PACKETS || seq_num < 0) return;
-
-    receiving_processing_times[seq_num].end_time = (uint64_t)time_us_64();
 }
 
 
@@ -203,7 +198,6 @@ void send_struct_data(void *data, size_t data_size, const char *data_type, trans
         return;
     }
 
-    sleep_ms(50);
     att_server_request_can_send_now_event(con_handle);
 }
 
@@ -320,7 +314,6 @@ void send_plaintext_temperature() {
     }
 }
 
-
  void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size) {
      UNUSED(size);
      UNUSED(channel);
@@ -335,8 +328,8 @@ void send_plaintext_temperature() {
             //  printf("BTstack up and running on %s.\n", bd_addr_to_str(local_addr));
  
              // Setup BLE advertising
-             uint16_t adv_int_min = 800;
-             uint16_t adv_int_max = 800;
+             uint16_t adv_int_min = 2000;
+             uint16_t adv_int_max = 2000;
              uint8_t adv_type = 0;
              bd_addr_t null_addr;
              memset(null_addr, 0, 6);
@@ -344,7 +337,7 @@ void send_plaintext_temperature() {
              assert(adv_data_len <= 31);
              gap_advertisements_set_data(adv_data_len, (uint8_t*) adv_data);
              gap_advertisements_enable(1);
- 
+            
              poll_temp(); // Read temperature initially
  
              break;
@@ -363,11 +356,11 @@ void send_plaintext_temperature() {
              } else {
                  if (active_transfer.data == NULL) {
                     //  Sleep for a bit to allow the last packet to be sent
-                     sleep_ms(5000);
+                     sleep_ms(2000);
                      print_all_results();
                      send_struct_data(RTT_table, MAX_PACKETS * sizeof(data_entry), "RTT", TRANSFER_RTT);
                  } else {
-                    sleep_ms(100);
+                    sleep_ms(300);
                     send_next_chunk();
                  }
              }
@@ -443,7 +436,6 @@ int att_write_callback(hci_con_handle_t connection_handle, uint16_t att_handle, 
             // Decrypt and print data
             uint16_t sequence_number = 0;
             recieve_encrypted_data(buffer, buffer_size, &sequence_number);
-            log_end_recieving_processing_time(sequence_number);
             log_start_recieving_processing_time(sequence_number, start_time);
         } else {
             printf("Empty Data Received!\n");
@@ -456,8 +448,10 @@ int att_write_callback(hci_con_handle_t connection_handle, uint16_t att_handle, 
 
 
 void poll_temp(void) {
+    adc_set_temp_sensor_enabled(true);
     adc_select_input(ADC_CHANNEL_TEMPSENSOR);
     uint32_t raw32 = adc_read();
+    adc_set_temp_sensor_enabled(false);
     const uint32_t bits = 12;
     uint16_t current_temp;
 

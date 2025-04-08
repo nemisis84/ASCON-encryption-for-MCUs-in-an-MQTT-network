@@ -19,7 +19,6 @@ void masked_ascon128a_encrypt(uint8_t *output, size_t *output_len,
     const uint8_t *data, size_t data_size,
     const uint8_t *associated_data, size_t ad_len,
     const uint8_t *nonce) {
-
     ascon128a_masked_aead_encrypt(output, output_len,
         data, data_size,
         associated_data, ad_len,

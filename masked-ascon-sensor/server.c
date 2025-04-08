@@ -13,6 +13,8 @@
 #include "encryption.h"
 #include "experiment_settings.h"
 #include "server_common.h"
+#include "hardware/sync.h"
+
 
 #define HEARTBEAT_PERIOD_MS TRANSMISSION_INTERVAL_MS
 
@@ -27,11 +29,6 @@ static void heartbeat_handler(struct btstack_timer_source *ts) {
     if (le_notification_enabled) { // If BLE notifications are enabled
         att_server_request_can_send_now_event(con_handle); // Send the temperature value
     }
-
-    // Invert the led
-    static int led_on = true;
-    led_on = !led_on;
-    cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, led_on);
 
     // Restart timer
     btstack_run_loop_set_timer(ts, HEARTBEAT_PERIOD_MS);
@@ -55,7 +52,6 @@ int main() {
     // Initialise adc for the temp sensor
     adc_init();
     adc_select_input(ADC_CHANNEL_TEMPSENSOR);
-    adc_set_temp_sensor_enabled(true);
 
     l2cap_init();
     sm_init();
@@ -70,7 +66,7 @@ int main() {
 
     // set one-shot btstack timer
     heartbeat.process = &heartbeat_handler;
-    btstack_run_loop_set_timer(&heartbeat, HEARTBEAT_PERIOD_MS); // Infinite heartbeat loop. Runs heartbeat function every 1 second. 
+    btstack_run_loop_set_timer(&heartbeat, HEARTBEAT_PERIOD_MS);
     btstack_run_loop_add_timer(&heartbeat);
 
     // turn on bluetooth!
@@ -87,8 +83,9 @@ int main() {
     // btstacK_run_loop_ methods to add work to the run loop.
     
     // this is a forever loop in place of where user code would go.
-    while(true) {      
+    while(true) {
         sleep_ms(1000);
+        // __wfi(); // wait for interrupt
     }
 #endif
     return 0;

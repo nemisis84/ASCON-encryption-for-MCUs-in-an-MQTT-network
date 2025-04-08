@@ -2,7 +2,6 @@ import os
 import pyascon.ascon as ascon
 import paho.mqtt.client as mqtt
 import time
-from datetime import datetime
 import pandas as pd
 import struct
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -22,16 +21,15 @@ class SecureMQTTClient:
         self.broker = broker
         self.port = port
         self.topic = topic
-
+ 
         # Crypto encryption parameters
 
         self.crypto_algorithm = "ASCON" if crypto_algorithm_tag.endswith(
-            "ASCON") else crypto_algorithm_tag
-
+            "ASCON") else crypto_algorithm_tag 
         self.devices = {
-            "TEMP-1": bytes.fromhex("000102030405060708090A0B0C0D0E0F")
+            "TEMP-1": bytes.fromhex("9E88CDDB2DA909937CACD4D8023F0D88")
         } if crypto_algorithm_tag.endswith("ASCON") else {
-            "TEMP-1": AESGCM(bytes.fromhex("000102030405060708090A0B0C0D0E0F"))
+            "TEMP-1": AESGCM(bytes.fromhex("9E88CDDB2DA909937CACD4D8023F0D88"))
         }
         self.nonce_size = 16 if self.crypto_algorithm == "ASCON" else 12 if self.crypto_algorithm == "AES-GCM" else 0
 
@@ -48,7 +46,7 @@ class SecureMQTTClient:
         self.receiving_data_type = ""
         self.received_bytes = b""
 
-        num_entries = 10
+        num_entries = 500
         self.encryption_log = pd.DataFrame(index=range(num_entries),
                                            columns=["Start_Time", "End_Time"])
         self.decryption_log = pd.DataFrame(index=range(num_entries),
@@ -222,7 +220,7 @@ class SecureMQTTClient:
         # Convert payload to string for easier processing
         payload_str = payload.decode("utf-8", errors="ignore")
         # Define the allowed data types
-        data_types = {"RTT", "ENC", "DEC", "R_PROC", "S_PROC", "US_PROC", "DS_PROC"}
+        data_types = {"RTT", "ENC", "DEC", "R_PROC", "S_PROC", "GW_US_PROC", "GW_DS_PROC"}
 
         if "|" in payload_str:
             main_data, suffix = payload_str.rsplit("|", 1)
@@ -312,8 +310,8 @@ if __name__ == "__main__":
     if len(sys.argv) < 3 or not sys.argv[1].isdigit():
         print("Usage: python main.py <scenario_number> <crypto_algorithm>")
         sys.exit(1)
-    if len(sys.argv[1]) > 1:
-        print("Scenario number should be a single digit.")
+    if len(sys.argv[1]) > 2:
+        print("Scenario number should be at most 2 digits.")
         sys.exit(1)
     if sys.argv[2] not in ["ASCON", "masked_ASCON", "AES-GCM", "NONE"]:
         print("Usage: python main.py <scenario_number> <crypto_algorithm>")
