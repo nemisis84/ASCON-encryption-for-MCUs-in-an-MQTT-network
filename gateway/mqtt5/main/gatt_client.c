@@ -523,11 +523,11 @@ void ble_forward(uint8_t *data, size_t len, uint64_t t_start) {
 
     if (seq_num < MAX_BLE_ENTRIES && t_start != 0) {
         downstream_timings[seq_num].seq_num = seq_num;
-        if (downstream_timings[seq_num].start_time == 0) {
-            downstream_timings[seq_num].start_time = t_start;
-        }
         if (downstream_timings[seq_num].end_time == 0) {
             downstream_timings[seq_num].end_time = esp_timer_get_time();
+        }
+        if (downstream_timings[seq_num].start_time == 0) {
+            downstream_timings[seq_num].start_time = t_start;
         }
     }
 
@@ -535,7 +535,7 @@ void ble_forward(uint8_t *data, size_t len, uint64_t t_start) {
         ESP_LOGI(GATTC_TAG, "📤 Sending LOGGING data to MQTT broker...");
     
         // Downstream marker
-        const char *ds_start_msg = "|GW|DS_PROC";
+        const char *ds_start_msg = "|GW|GW_DS_PROC";
         mqtt_publish("/ascon-e2e/data-storage", ds_start_msg, strlen(ds_start_msg), 0);
         // ESP_LOGI(GATTC_TAG, "Published marker: %s", ds_start_msg);
     
@@ -552,7 +552,7 @@ void ble_forward(uint8_t *data, size_t len, uint64_t t_start) {
         }
     
         // Upstream marker
-        const char *us_start_msg = "|GW|US_PROC";
+        const char *us_start_msg = "|GW|GW_US_PROC";
         mqtt_publish("/ascon-e2e/data-storage", us_start_msg, strlen(us_start_msg), 0);
         ESP_LOGI(GATTC_TAG, "Published marker: %s", us_start_msg);
     
@@ -567,6 +567,8 @@ void ble_forward(uint8_t *data, size_t len, uint64_t t_start) {
         } else {
             ESP_LOGE(GATTC_TAG, "❌ Failed to allocate memory for upstream timings");
         }
+
+        init_processing_logging();
     }
     
 }
