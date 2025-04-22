@@ -51,27 +51,27 @@ void init_primitives() {
     
 
 void log_start_decryption_time(uint16_t seq_num) {
-    if (seq_num >= MAX_PACKETS || seq_num <0) return;
+    if (seq_num >= max_packets || seq_num <0) return;
 
     decryption_times[seq_num].seq_num = seq_num;
     decryption_times[seq_num].start_time = (uint64_t)time_us_64();  // Example with seconds (use microseconds for precision)
 }
 
 void log_end_decryption_time(uint16_t seq_num) {
-    if (seq_num >= MAX_PACKETS || seq_num <0) return;
+    if (seq_num >= max_packets || seq_num <0) return;
     
     decryption_times[seq_num].end_time = (uint64_t)time_us_64();  // Example with seconds (use microseconds for precision)
 }
 
 void log_start_encryption_time(uint16_t seq_num) {
-    if (seq_num >= MAX_PACKETS || seq_num <0) return;
+    if (seq_num >= max_packets || seq_num <0) return;
 
     encryption_times[seq_num].seq_num = seq_num;
     encryption_times[seq_num].start_time = (uint64_t)time_us_64();  // Example with seconds (use microseconds for precision)
 }
 
 void log_end_encryption_time(uint16_t seq_num) {
-    if (seq_num >= MAX_PACKETS || seq_num <0) return;
+    if (seq_num >= max_packets || seq_num <0) return;
     
     encryption_times[seq_num].end_time = (uint64_t)time_us_64();  // Example with seconds (use microseconds for precision)
 }

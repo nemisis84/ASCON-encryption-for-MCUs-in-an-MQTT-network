@@ -40,6 +40,83 @@
  #define MAX_PACKET_SIZE HCI_ACL_PAYLOAD_SIZE // Maximum size of a packet to prevent out-of-memory issues
 
 
+ // Define global variables
+ int max_packets;
+ int payload_multiple;
+ int transmission_interval_ms;
+ 
+ max_packets = 100;
+
+ void configure_scenario(int scenario) {
+     switch (scenario) {
+         case 1:
+             
+             payload_multiple = 1;
+             transmission_interval_ms = INTERVAL_1_SECOND;
+             break;
+         case 2:
+             
+             payload_multiple = 5;
+             transmission_interval_ms = INTERVAL_1_SECOND;
+             break;
+         case 3:
+             
+             payload_multiple = 50;
+             transmission_interval_ms = INTERVAL_1_SECOND;
+             break;
+         case 4:
+             
+             payload_multiple = 100;
+             transmission_interval_ms = INTERVAL_1_SECOND;
+             break;
+         case 5:
+             
+             payload_multiple = 1;
+             transmission_interval_ms = INTERVAL_10_SECONDS;
+             break;
+         case 6:
+             
+             payload_multiple = 5;
+             transmission_interval_ms = INTERVAL_10_SECONDS;
+             break;
+         case 7:
+             
+             payload_multiple = 50;
+             transmission_interval_ms = INTERVAL_10_SECONDS;
+             break;
+         case 8:
+             
+             payload_multiple = 100;
+             transmission_interval_ms = INTERVAL_10_SECONDS;
+             break;
+         case 9:
+             
+             payload_multiple = 1;
+             transmission_interval_ms = INTERVAL_1_MINUTES;
+             break;
+         case 10:
+             
+             payload_multiple = 5;
+             transmission_interval_ms = INTERVAL_1_MINUTES;
+             break;
+         case 11:
+             
+             payload_multiple = 50;
+             transmission_interval_ms = INTERVAL_1_MINUTES;
+             break;
+         case 12:
+             
+             payload_multiple = 100;
+             transmission_interval_ms = INTERVAL_1_MINUTES;
+             break;
+         default:
+             printf("❌ Invalid scenario: %d\n", scenario);
+             break;
+     }
+ }
+ 
+
+ 
  static uint8_t adv_data[] = {
      0x02, BLUETOOTH_DATA_TYPE_FLAGS, APP_AD_FLAGS,
      0x17, BLUETOOTH_DATA_TYPE_COMPLETE_LOCAL_NAME, 'P', 'i', 'c', 'o', ' ', '0', '0', ':', '0', '0', ':', '0', '0', ':', '0', '0', ':', '0', '0', ':', '0', '0',
@@ -49,7 +126,18 @@
  
  int le_notification_enabled;
  hci_con_handle_t con_handle;
- temperatures current_temps;
+ temperatures *current_temps = NULL;
+ 
+ 
+ void allocate_temperature_buffer() {
+    if (current_temps) {
+        free(current_temps->values);
+        free(current_temps);
+    }
+
+    current_temps = malloc(sizeof(temperatures));
+    current_temps->values = malloc(sizeof(uint16_t) * payload_multiple);
+}
  
  uint8_t sensor_ID[] = "TEMP-1";
  
@@ -72,11 +160,19 @@ data_entry *RTT_table = NULL;
 
 
 void init_timing_logging() {
-    encryption_times = calloc(MAX_PACKETS, sizeof(data_entry));
-    decryption_times = calloc(MAX_PACKETS, sizeof(data_entry));
-    sending_processing_times = calloc(MAX_PACKETS, sizeof(data_entry));
-    receiving_processing_times = calloc(MAX_PACKETS, sizeof(data_entry));
-    RTT_table = calloc(MAX_PACKETS, sizeof(data_entry));
+    // Free previous memory if allocated
+    if (encryption_times) free(encryption_times);
+    if (decryption_times) free(decryption_times);
+    if (sending_processing_times) free(sending_processing_times);
+    if (receiving_processing_times) free(receiving_processing_times);
+    if (RTT_table) free(RTT_table);
+
+    // Reallocate with updated max_packets
+    encryption_times = calloc(max_packets, sizeof(data_entry));
+    decryption_times = calloc(max_packets, sizeof(data_entry));
+    sending_processing_times = calloc(max_packets, sizeof(data_entry));
+    receiving_processing_times = calloc(max_packets, sizeof(data_entry));
+    RTT_table = calloc(max_packets, sizeof(data_entry));
 
     if (!encryption_times || !decryption_times || !sending_processing_times ||
         !receiving_processing_times || !RTT_table) {
@@ -85,9 +181,10 @@ void init_timing_logging() {
     }
 }
 
+
 // Function to log the start time
 void log_start_time(uint16_t seq_num) {
-    if (seq_num >= MAX_PACKETS || seq_num < 0) return;
+    if (seq_num >= max_packets || seq_num < 0) return;
 
     uint64_t start_time = (uint64_t)time_us_64();  // Get the current timestamp once
 
@@ -100,20 +197,20 @@ void log_start_time(uint16_t seq_num) {
 
 // Function to log the end time
 void log_end_time(uint16_t seq_num) {
-    if (seq_num >= MAX_PACKETS || seq_num <0) return;
+    if (seq_num >= max_packets || seq_num <0) return;
     uint64_t end_time = (uint64_t)time_us_64();
     RTT_table[seq_num].end_time = end_time;
     receiving_processing_times[seq_num].end_time = end_time;
 }
 
 void log_end_sending_processing_time(uint16_t seq_num) {
-    if (seq_num >= MAX_PACKETS || seq_num < 0) return;
+    if (seq_num >= max_packets || seq_num < 0) return;
 
     sending_processing_times[seq_num].end_time = (uint64_t)time_us_64();
 }
 
 void log_start_recieving_processing_time(uint16_t seq_num, uint64_t start_time) {
-    if (seq_num >= MAX_PACKETS || seq_num < 0) return;
+    if (seq_num >= max_packets || seq_num < 0) return;
 
     receiving_processing_times[seq_num].seq_num = seq_num;
     receiving_processing_times[seq_num].start_time = start_time;
@@ -142,29 +239,33 @@ static ble_transfer_t active_transfer = {0};
 
 void print_all_results() {
     printf("\n📊 RTT Results:\n");
-    for (int i = 0; i < MAX_PACKETS; i++) {
+    for (int i = 0; i < max_packets; i++) {
         printf("RTT %2d → Start: %llu, End: %llu\n", i, RTT_table[i].start_time, RTT_table[i].end_time);
     }
 
     printf("\n🔐 Encryption Times:\n");
-    for (int i = 0; i < MAX_PACKETS; i++) {
+    for (int i = 0; i < max_packets; i++) {
         printf("ENC %2d → Start: %llu, End: %llu\n", i, encryption_times[i].start_time, encryption_times[i].end_time);
     }
 
     printf("\n🔓 Decryption Times:\n");
-    for (int i = 0; i < MAX_PACKETS; i++) {
+    for (int i = 0; i < max_packets; i++) {
         printf("DEC %2d → Start: %llu, End: %llu\n", i, decryption_times[i].start_time, decryption_times[i].end_time);
     }
 
     printf("\n📥 Receiving Processing Times:\n");
-    for (int i = 0; i < MAX_PACKETS; i++) {
+    for (int i = 0; i < max_packets; i++) {
         printf("RECV %2d → Start: %llu, End: %llu\n", i, receiving_processing_times[i].start_time, receiving_processing_times[i].end_time);
     }
 
     printf("\n📤 Sending Processing Times:\n");
-    for (int i = 0; i < MAX_PACKETS; i++) {
+    for (int i = 0; i < max_packets; i++) {
         printf("SEND %2d → Start: %llu, End: %llu\n", i, sending_processing_times[i].start_time, sending_processing_times[i].end_time);
     }
+}
+
+void init_active_transfer() {
+    memset(&active_transfer, 0, sizeof(active_transfer));
 }
 
 
@@ -190,6 +291,7 @@ void send_struct_data(void *data, size_t data_size, const char *data_type, trans
         .transfer_type = transfer_type
     };
 
+
     char associated_data[50];
     snprintf(associated_data, sizeof(associated_data), "|%s|%s", sensor_ID, data_type);
     if (att_server_notify(con_handle, ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_VALUE_HANDLE,
@@ -205,25 +307,40 @@ void send_next_chunk() {
     if (active_transfer.bytes_sent >= active_transfer.data_size) {
         printf("✅ Completed %s transfer (%zu bytes in %d chunks)\n",
                (active_transfer.transfer_type == TRANSFER_RTT) ? "RTT" :
-               (active_transfer.transfer_type == TRANSFER_ENC) ? "ENC" : "DEC",
+               (active_transfer.transfer_type == TRANSFER_ENC) ? "ENC" :
+               (active_transfer.transfer_type == TRANSFER_DEC) ? "DEC" :
+               (active_transfer.transfer_type == TRANSFER_S_PROC) ? "S_PROC" : "R_PROC",
                active_transfer.data_size, active_transfer.total_chunks);
 
-        // Move to the next struct after RTT -> ENC -> DEC
         if (active_transfer.transfer_type == TRANSFER_RTT) {
-            send_struct_data(encryption_times, MAX_PACKETS * sizeof(data_entry), "ENC", TRANSFER_ENC);
+            send_struct_data(encryption_times, max_packets * sizeof(data_entry), "ENC", TRANSFER_ENC);
         } else if (active_transfer.transfer_type == TRANSFER_ENC) {
-            send_struct_data(decryption_times, MAX_PACKETS * sizeof(data_entry), "DEC", TRANSFER_DEC);
+            send_struct_data(decryption_times, max_packets * sizeof(data_entry), "DEC", TRANSFER_DEC);
         } else if (active_transfer.transfer_type == TRANSFER_DEC) {
-            send_struct_data(receiving_processing_times, MAX_PACKETS * sizeof(data_entry), "R_PROC", TRANSFER_R_PROC);
+            send_struct_data(receiving_processing_times, max_packets * sizeof(data_entry), "R_PROC", TRANSFER_R_PROC);
         } else if (active_transfer.transfer_type == TRANSFER_R_PROC) {
-            send_struct_data(sending_processing_times, MAX_PACKETS * sizeof(data_entry), "S_PROC", TRANSFER_S_PROC);
+            send_struct_data(sending_processing_times, max_packets * sizeof(data_entry), "S_PROC", TRANSFER_S_PROC);
         } else {
-            printf("All BLE transfers complete!\n");
-            abort();
+            if (current_scenario < 12) {
+                current_scenario++;
+
+                sleep_ms(10000);  // Distinguish in power trace
+                configure_scenario(current_scenario);
+                allocate_temperature_buffer();
+                init_active_transfer();
+                counter = 0;
+                init_timing_logging();  // Reset logs for the new scenario
+                poll_temp();  // Ensure fresh data
+                att_server_request_can_send_now_event(con_handle);  // Start sending again
+            } else {
+                printf("✅ All BLE experiments completed.\n");
+                abort();
+            }
         }
         return;
     }
-
+    // printf("Active transfer TYPE is: %d\n", active_transfer.transfer_type);
+    // printf("Sent %zu bytes of %zu\n", active_transfer.bytes_sent, active_transfer.data_size);
     size_t bytes_to_send = (active_transfer.data_size - active_transfer.bytes_sent > active_transfer.chunk_size)
                                ? active_transfer.chunk_size
                                : (active_transfer.data_size - active_transfer.bytes_sent);
@@ -259,7 +376,7 @@ void send_next_chunk() {
     size_t encrypted_len;
     uint8_t nonce[NONCE_SIZE];
 
-    encrypt(&current_temps, sizeof(current_temps), encrypted_payload, &encrypted_len,
+    encrypt(current_temps->values, sizeof(uint16_t) * payload_multiple, encrypted_payload, &encrypted_len,
             nonce, associated_data, counter);
 
 
@@ -346,7 +463,7 @@ void send_plaintext_temperature() {
              le_notification_enabled = 0;
              break;
          case ATT_EVENT_CAN_SEND_NOW:
-             if (counter < MAX_PACKETS) {
+             if (counter < max_packets) {
                 if (SELECTED_ENCRYPTION_MODE != ENCRYPTION_NONE) {
                     send_encrypted_temperature();
                 }
@@ -358,9 +475,9 @@ void send_plaintext_temperature() {
                     //  Sleep for a bit to allow the last packet to be sent
                      sleep_ms(2000);
                      print_all_results();
-                     send_struct_data(RTT_table, MAX_PACKETS * sizeof(data_entry), "RTT", TRANSFER_RTT);
+                     send_struct_data(RTT_table, max_packets * sizeof(data_entry), "RTT", TRANSFER_RTT);
                  } else {
-                    sleep_ms(300);
+                    sleep_ms(800);
                     send_next_chunk();
                  }
              }
@@ -469,10 +586,10 @@ void poll_temp(void) {
     // printf("Write temp %.2f degc\n", deg_c);
 
     // Shift left to make room for new value
-    for (int i = 0; i < PAYLOAD_MULTIPLE - 1; i++) {
-        current_temps.values[i] = current_temps.values[i + 1];
+    for (int i = 0; i < payload_multiple - 1; i++) {
+        current_temps->values[i] = current_temps->values[i + 1];
     }
 
     // Store latest value
-    current_temps.values[PAYLOAD_MULTIPLE - 1] = current_temp;
+    current_temps->values[payload_multiple - 1] = current_temp;
 }
