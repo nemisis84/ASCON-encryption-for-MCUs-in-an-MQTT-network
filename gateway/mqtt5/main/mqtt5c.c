@@ -208,8 +208,8 @@
          return;
      }
 
-     ESP_LOGI(TAG, "🔹 MQTT Debug: Data Before Publish (Raw HEX)");
-     ESP_LOG_BUFFER_HEX(TAG, data, len);  
+    //  ESP_LOGI(TAG, "🔹 MQTT Debug: Data Before Publish (Raw HEX)");
+    //  ESP_LOG_BUFFER_HEX(TAG, data, len);  
 
     int msg_id = esp_mqtt_client_publish(client, topic, (const char *)data, len, 1, 0);
     
@@ -217,11 +217,11 @@
 
     if (seq_num < MAX_BLE_ENTRIES && t_start != 0) {
         upstream_timings[seq_num].seq_num = seq_num;
-        if (upstream_timings[seq_num].start_time == 0) {
-            upstream_timings[seq_num].start_time = t_start;
-        }
         if (upstream_timings[seq_num].end_time == 0) {
             upstream_timings[seq_num].end_time = esp_timer_get_time();
+        }
+        if (upstream_timings[seq_num].start_time == 0) {
+            upstream_timings[seq_num].start_time = t_start;
         }
     }
 

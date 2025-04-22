@@ -32,6 +32,8 @@ typedef struct {
 } data_entry_t;
 
 #define MAX_BLE_ENTRIES 100
+
+void init_processing_logging();
 extern data_entry_t *upstream_timings;
 extern data_entry_t *downstream_timings;
 

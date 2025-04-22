@@ -16,11 +16,13 @@
 #include "hardware/sync.h"
 
 
-#define HEARTBEAT_PERIOD_MS TRANSMISSION_INTERVAL_MS
+#define HEARTBEAT_PERIOD_MS transmission_interval_ms
 
 
 static btstack_timer_source_t heartbeat;
 static btstack_packet_callback_registration_t hci_event_callback_registration;
+int current_scenario = 1;
+
 
 static void heartbeat_handler(struct btstack_timer_source *ts) {
     
@@ -31,17 +33,21 @@ static void heartbeat_handler(struct btstack_timer_source *ts) {
     }
 
     // Restart timer
-    btstack_run_loop_set_timer(ts, HEARTBEAT_PERIOD_MS);
+    btstack_run_loop_set_timer(ts, transmission_interval_ms);
     btstack_run_loop_add_timer(ts);
+
 }
 
 
 int main() {
     stdio_init_all();
 
+
+
     // Initialize the PRNG
     init_primitives();
-    
+    configure_scenario(current_scenario);
+    allocate_temperature_buffer();
     init_timing_logging();
     // initialize CYW43 driver architecture (will enable BT if/because CYW43_ENABLE_BLUETOOTH == 1)
     if (cyw43_arch_init()) {
@@ -66,7 +72,7 @@ int main() {
 
     // set one-shot btstack timer
     heartbeat.process = &heartbeat_handler;
-    btstack_run_loop_set_timer(&heartbeat, HEARTBEAT_PERIOD_MS);
+    btstack_run_loop_set_timer(&heartbeat, transmission_interval_ms);
     btstack_run_loop_add_timer(&heartbeat);
 
     // turn on bluetooth!

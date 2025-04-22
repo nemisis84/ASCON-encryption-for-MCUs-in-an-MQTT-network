@@ -21,7 +21,7 @@ class SecureMQTTClient:
         self.broker = broker
         self.port = port
         self.topic = topic
- 
+        self.scenario = int(scenario)
         # Crypto encryption parameters
 
         self.crypto_algorithm = "ASCON" if crypto_algorithm_tag.endswith(
@@ -41,12 +41,17 @@ class SecureMQTTClient:
         self.client.on_message = self._on_message
         self.send_back = send_back
 
+        self.init_scenario()
+
+
+        print(f"MQTT Protocol Version: {self.client._protocol}")
+
+    def init_scenario(self):
         # Store data
         self.receive_data_mode = False
         self.receiving_data_type = ""
         self.received_bytes = b""
-
-        num_entries = 500
+        num_entries = 100
         self.encryption_log = pd.DataFrame(index=range(num_entries),
                                            columns=["Start_Time", "End_Time"])
         self.decryption_log = pd.DataFrame(index=range(num_entries),
@@ -57,15 +62,15 @@ class SecureMQTTClient:
         self.stored = False  # Keeps track of if the datastorage data has been stored
 
         base_dir = os.path.join("results",
-                                crypto_algorithm_tag + "_scen" + scenario)
+                                crypto_algorithm_tag + "_scen" + str(self.scenario))
         self.results_dir = base_dir
         counter = 1
         while os.path.exists(self.results_dir):
             self.results_dir = f"{base_dir}_{counter}"
             counter += 1
         os.makedirs(self.results_dir, exist_ok=True)
-
-        print(f"MQTT Protocol Version: {self.client._protocol}")
+        self.scenario += 1
+        self.none_seq_num = 0
 
     def _on_connect(self, client, userdata, flags, reason_code, properties):
         """Callback when the client connects to the broker."""
@@ -86,6 +91,13 @@ class SecureMQTTClient:
                 if self.crypto_algorithm == "NONE" and self.send_back:
                     # print("No encryption, sending back the message")
                     self.publish(payload, "/ascon-e2e/PICO")
+                    associated_data = self.parse_unencrypted_message(payload)
+                    end_proccesing_time = time.perf_counter_ns()
+                    seq_num = int(associated_data.decode().split("|")[-1])
+                    self.processing_time.loc[seq_num] = {
+                    "Start_Time": start_processing_time,
+                    "End_Time": end_proccesing_time,
+                }
                     return
                 else:
                     ciphertext, nonce, associated_data = self._parse_encrypted_message(
@@ -184,7 +196,7 @@ class SecureMQTTClient:
         self.receive_data_mode = False
 
         if self.receiving_data_type == "S_PROC": # Last entry
-            sys.exit(0)
+            self.init_scenario()
 
     def _encrypt_message(
             self,
@@ -237,6 +249,24 @@ class SecureMQTTClient:
 
         print("Invalid Payload Format")
         return False  # Invalid payload case
+
+    def parse_unencrypted_message(self, payload: bytes):
+        """Parses a raw byte-encoded unencrypted message."""
+        if self._check_if_data_is_incoming(payload):
+            return None, None, None
+
+        # Check if the payload is too short to contain a valid sequence number
+        if len(payload) < 2:
+            print("Error: Payload too short to contain a valid sequence number.")
+            return None, None, None
+
+        try:
+            ad_start_index = payload.rindex(b"|TEMP-")
+        except ValueError:
+            print("❌ Error: Associated Data not found.")
+            return None, None, None
+        associated_data = payload[ad_start_index:]
+        return associated_data
 
     def _parse_encrypted_message(self, payload: bytes):
         """Parses a raw byte-encoded encrypted message."""

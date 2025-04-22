@@ -63,6 +63,15 @@ void ble_task(void *pvParameters) {
 
 
 void init_processing_logging(){
+    if (upstream_timings) {
+        free(upstream_timings);
+        upstream_timings = NULL;
+    }
+    if (downstream_timings) {
+        free(downstream_timings);
+        downstream_timings = NULL;
+    }
+
     upstream_timings = calloc(MAX_BLE_ENTRIES, sizeof(data_entry_t));
     downstream_timings = calloc(MAX_BLE_ENTRIES, sizeof(data_entry_t));
 
@@ -71,6 +80,7 @@ void init_processing_logging(){
         abort();
     }
 }
+
 
 void app_main(void *pvParameters) {
     ESP_LOGI(TAG, "Starting system...");

@@ -29,11 +29,16 @@ extern data_entry *decryption_times;
 extern data_entry *sending_processing_times;
 extern data_entry *receiving_processing_times;
 extern data_entry *RTT_table;
+extern int current_scenario;
 
 
 typedef struct {
-    uint16_t values[PAYLOAD_MULTIPLE];
+    uint16_t *values;
 } temperatures;
+
+extern temperatures *current_temps;
+
+void configure_scenario(int scenario);
 
 void packet_handler(uint8_t packet_type, uint16_t channel, uint8_t *packet, uint16_t size);
 uint16_t att_read_callback(hci_con_handle_t connection_handle, uint16_t att_handle, uint16_t offset, uint8_t * buffer, uint16_t buffer_size);
