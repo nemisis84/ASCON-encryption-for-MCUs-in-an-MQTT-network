@@ -1,7 +1,10 @@
 import pandas as pd
 import numpy as np
-import os
+import os, gc
 import matplotlib.pyplot as plt
+from typing import Dict, List
+from scipy.signal import decimate
+from scipy.ndimage import binary_closing
 
 encryption_methods = ["ASCON", "masked_ASCON", "AES-GCM", "NONE"]
 scenarios = 12
@@ -20,12 +23,6 @@ LABEL_ALIASES = {
     "HW_and_Network": "Hardware and Network Time",
     "%_of_RTT":    "Hardware and network time as % of RTT"
 }
-
-import numpy as np
-import pandas as pd
-
-import numpy as np
-import pandas as pd
 
 def remove_invalid_rows(df, prefix):
     """
@@ -148,7 +145,7 @@ def compute_stats(logs, base_name, metric):
     return pd.DataFrame(stats)
 
 def get_stats(frames: dict, scen: int, category= "RTT"):
-    stats = {"Method": [], f"Mean_{category}": [], f"Std_{category}": []}
+    stats: Dict[str, List] = {"Method": [], f"Mean_{category}": [], f"Std_{category}": []}
     for encryption_method in encryption_methods:
         frame = frames[encryption_method][scen-1]
         stats["Method"].append(f"{encryption_method}_{category}")
@@ -161,8 +158,9 @@ def get_stats(frames: dict, scen: int, category= "RTT"):
     return pd.DataFrame(stats)
 
 
-def get_encryption_stats(frames: dict, encryption_method: str, category= "RTT"):
-    stats = {f"Mean_{category}": [], f"Std_{category}": []}
+
+def get_encryption_stats(frames: dict, encryption_method: str, category= "RTT") -> pd.DataFrame:
+    stats: Dict[str, List[float]] = {f"Mean_{category}": [], f"Std_{category}": []}
     for scen in range(scenarios):
         frame = frames[encryption_method][scen]
         if frame is None or f"{category}_Delta" not in frame.columns:
@@ -221,3 +219,160 @@ def save_figure(frames, path):
         fig = plot_bar_results(frames, metric)
         fig.savefig(os.path.join(path, metric), bbox_inches='tight')
         print(f"Saved {metric}")
+
+
+def read_data(path):
+    df = pd.read_csv(
+        path,
+        engine="pyarrow",               # still OK in pandas ≥2.0
+        usecols=["Value", "Timestamp"], # limit to those two columns
+        dtype={"Value": "float32"},     # optional speed/memory tweak
+    )
+    return df
+
+def plot_scenarios(dfs, ylim=(0.03, 0.075)):
+       fig, axes = plt.subplots(3, 4, figsize=(15, 12))
+
+       for idx, ax in enumerate(axes.flatten()): 
+              df = dfs[idx].iloc[::4]
+              ax.plot(df['Timestamp'], df['Value'], linewidth = 0.2)
+              ax.set_title(f"Scenario {idx+1}")
+              ax.set_xlabel("Time (s)")
+              ax.set_ylabel("Current (A)")
+              ax.set_ylim(ylim)
+
+       plt.tight_layout()
+       plt.show()
+
+
+def fast_segment(df, value_col="Value", fs=4000,
+                 target_fs=100,     # decimate to 50 Hz
+                 smooth_s=0.5,     # 0.5 s window @50 Hz → 25 samples
+                 thresh=0.035,        # pick your threshold on the smoothed decimated signal
+                 min_gap_s=0.1     # close gaps shorter than 0.1 s @50 Hz → 5 samples
+                ):
+    sig = df[value_col].values.astype(float)
+
+    # 1) decimate
+    q = int(fs/target_fs)
+    sig_dec = decimate(sig, q, ftype="fir", zero_phase=True)
+
+    # 2) smooth with convolution (fast)
+    win = int(smooth_s * target_fs)
+    kernel = np.ones(win)/win
+    roll_dec = np.convolve(sig_dec, kernel, mode="same")
+
+    # 3) threshold
+    mask_dec = roll_dec > thresh
+
+    # 4) close tiny gaps
+    gap = int(min_gap_s * target_fs)
+    mask_dec = binary_closing(mask_dec, structure=np.ones(gap))
+
+    # 5) upsample mask back to fs
+    mask_full = np.repeat(mask_dec, q)[:len(sig)]
+
+    # 6) add to DataFrame
+    df["state"] = np.where(mask_full, "high", "low")
+    return df
+
+
+def plot_segmented(df, fs=4000):
+    plot_df = df.iloc[::4]  # downsample for plotting
+    times = plot_df['Timestamp'].values
+    vals  = plot_df['Value'].values
+
+    # build two arrays that are NaN whenever they’re not in that state
+    high_vals = np.where(plot_df['state']=='high', vals, np.nan)
+    low_vals = np.where(plot_df['state']=='low',  vals, np.nan)
+
+    fig, ax = plt.subplots(figsize=(40,5))
+
+    # plot each as a continuous line but with NaNs breaking the segments
+    ax.plot(times, low_vals,  '-', linewidth=0.5, color='blue', label='Low')
+    ax.plot(times, high_vals, '-', linewidth=0.5, color='red',  label='High')
+
+    ax.set_xlabel("Time (s)")
+    ax.set_ylabel("Current (mA)")
+    ax.set_title("Power Usage Segmentation")
+    ax.set_ylim(0.030, 0.075)
+    ax.legend(loc='upper right')
+    ax.grid()
+    plt.tight_layout()
+    plt.show()
+
+
+# def calculate_currents(segmented_df):
+#     high_mean_current = segmented_df[segmented_df['state'] == 'high']['Value'].mean()
+#     high_std_current = segmented_df[segmented_df['state'] == 'high']['Value'].std()
+#     low_mean_current = segmented_df[segmented_df['state'] == 'low']['Value'].mean()
+#     low_std_current = segmented_df[segmented_df['state'] == 'low']['Value'].std()
+#     mean_current = segmented_df['Value'].mean()
+#     mean_std_current = segmented_df['Value'].std()
+#     results = {
+#         'high_mean_current': (high_mean_current, high_std_current),
+#         'low_mean_current': (low_mean_current, low_std_current),
+#         'mean_current': (mean_current, mean_std_current)
+#     }
+#     return results
+
+def calculate_currents(segmented_df):
+    """
+    Given a df with columns:
+      - 'Value' : float array of currents
+      - 'state' : 'high' or 'low' labels per sample
+    Compute:
+      • high_mean_current  & std
+      • low_mean_current   & std
+      • overall mean_current & std
+    Returns a dict of (mean, std) tuples.
+    """
+    # pull out the raw values
+    vals = segmented_df['Value'].to_numpy()
+    # rebuild exactly the same mask_full boolean array
+    mask_high = segmented_df['state'].to_numpy() == 'high'
+    # high and low samples
+    high = vals[mask_high]
+    low  = vals[~mask_high]
+
+    return {
+        'high_mean_current': (high.mean(),       high.std()),
+        'low_mean_current':  (low.mean(),        low.std()),
+        'mean_current':      (vals.mean(),       vals.std())
+    }
+
+
+
+
+def make_currents_table(dfs, fs = 4000):
+    smooth_s    = 0.03
+    thresh = 0.037
+    min_gap_s   = 0.5
+    # Segment all scenarios
+
+    for i in range(12):
+        print(i)
+        segmented = fast_segment(
+            df=dfs[i],
+            value_col='Value',
+            fs=fs,
+            smooth_s=smooth_s,
+            thresh=thresh,
+            min_gap_s=min_gap_s
+        )
+        dfs[i] = segmented
+
+    rows = []
+    for i, df in enumerate(dfs, start=1):
+        stats = calculate_currents(df)
+        rows.append({
+            'Scenario': f'scen_{i}',
+            'High (mA)': f"{stats['high_mean_current'][0]:.6f} ± {stats['high_mean_current'][1]:.6f}",
+            'Low (mA)':  f"{stats['low_mean_current'][0]:.6f} ± {stats['low_mean_current'][1]:.6f}",
+            'All (mA)':  f"{stats['mean_current'][0]:.6f} ± {stats['mean_current'][1]:.6f}",
+        })
+
+    table = pd.DataFrame(rows).set_index('Scenario')
+
+    print(table.to_markdown())
+    return table

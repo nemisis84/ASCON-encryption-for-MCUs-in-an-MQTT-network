@@ -12,3 +12,5 @@ dependencies:
       - pandas == 2.2.3
       - cryptography == 44.0.2
       - matplotlib == 3.10.1
+      - pyarrow == 19.0.1
+      - scipy == 1.15.2
