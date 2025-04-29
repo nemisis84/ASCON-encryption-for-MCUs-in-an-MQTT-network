@@ -302,20 +302,6 @@ def plot_segmented(df, fs=4000):
     plt.show()
 
 
-# def calculate_currents(segmented_df):
-#     high_mean_current = segmented_df[segmented_df['state'] == 'high']['Value'].mean()
-#     high_std_current = segmented_df[segmented_df['state'] == 'high']['Value'].std()
-#     low_mean_current = segmented_df[segmented_df['state'] == 'low']['Value'].mean()
-#     low_std_current = segmented_df[segmented_df['state'] == 'low']['Value'].std()
-#     mean_current = segmented_df['Value'].mean()
-#     mean_std_current = segmented_df['Value'].std()
-#     results = {
-#         'high_mean_current': (high_mean_current, high_std_current),
-#         'low_mean_current': (low_mean_current, low_std_current),
-#         'mean_current': (mean_current, mean_std_current)
-#     }
-#     return results
-
 def calculate_currents(segmented_df):
     """
     Given a df with columns:
