@@ -8,7 +8,7 @@ from scipy.ndimage import binary_closing
 
 encryption_methods = ["ASCON", "masked_ASCON", "AES-GCM", "NONE"]
 scenarios = 12
-metrics = ["RTT", "S_PROC", "R_PROC", "DS_PROC", "DS_ENC", "DS_DEC","GW_US_PROC", "GW_DS_PROC", "ENC", "DEC", "HW_and_Network", "%_of_RTT"]
+metrics = ["RTT", "S_PROC", "R_PROC", "DS_PROC", "DS_ENC", "DS_DEC","GW_US_PROC", "GW_DS_PROC", "ENC", "DEC", "HW_and_Network", "percent_of_RTT", "DS_encryption_time_of_RTT", "S_encryption_time_of_RTT","NTNU_network_time", "BLE_transmission_time"]
 LABEL_ALIASES = {
     "RTT":         "Round‑Trip Time",
     "S_PROC":      "Sensor Sending Processing Time",
@@ -21,7 +21,11 @@ LABEL_ALIASES = {
     "ENC":         "Sensor Encryption Time",
     "DEC":         "Sensor Decryption Time",
     "HW_and_Network": "Hardware and Network Time",
-    "%_of_RTT":    "Hardware and network time as % of RTT"
+    "percent_of_RTT":    "Hardware and network time as % of RTT",
+    "DS_encryption_time_of_RTT": "Data Storage Encryption and decryption time as % of RTT",
+    "S_encryption_time_of_RTT": "Sensor Encryption and decryption time as % of RTT",
+    "NTNU_network_time": "Gatway to data storage to gateway Time",
+    "BLE_transmission_time": "Total BLE transmission Time per round-trip",
 }
 
 def remove_invalid_rows(df, prefix):
@@ -79,7 +83,17 @@ def remove_invalid_rows(df, prefix):
     return df_clean[~invalid_rows]
 
 
+def round_to_ms(df, col):
+    if col.startswith("DS_"):
+        td = pd.to_timedelta(df[col].astype('int64'), unit='ns')
+        # This yields a float in ms, preserving fractions
+        df[col] = td / pd.Timedelta(milliseconds=1)
+    else:
+        td = pd.to_timedelta(df[col].astype('int64'), unit='us')
+        # This yields a float in ms, preserving fractions
+        df[col] = td / pd.Timedelta(milliseconds=1)
 
+    return df
 
 def load_and_merge_logs(folder_path):
     filenames = ["ENC.csv", "DEC.csv", "DS_ENC.csv", "DS_DEC.csv", "RTT.csv", "S_PROC.csv", "R_PROC.csv", "DS_PROC.csv", "GW_US_PROC.csv", "GW_DS_PROC.csv"]
@@ -107,6 +121,17 @@ def load_and_merge_logs(folder_path):
         print(f"No files found in {folder_path}.")
         return None
     
+    # gw to data storage to gw
+    if "GW_US_PROC_End_Time" in merged_df.columns and "GW_DS_PROC_Start_Time" in merged_df.columns:
+        merged_df["NTNU_network_time_Delta"] = merged_df["GW_DS_PROC_Start_Time"] - merged_df["GW_US_PROC_End_Time"] 
+        merged_df = round_to_ms(merged_df, "NTNU_network_time_Delta")
+
+    # BLE transfoer time
+    if "GW_US_PROC_Start_Time" in merged_df.columns and "GW_DS_PROC_End_Time" in merged_df.columns:
+        merged_df["BLE_transmission_time_Delta"] = merged_df["GW_DS_PROC_End_Time"] - merged_df["GW_US_PROC_Start_Time"]
+        merged_df = round_to_ms(merged_df, "BLE_transmission_time_Delta")
+        
+
     # Convert timestamps to deltas
     for prefix in ["RTT", "S_PROC", "R_PROC", "DS_PROC", "DS_ENC", "DS_DEC","GW_US_PROC", "GW_DS_PROC", "ENC", "DEC"]:
         start_col = f"{prefix}_Start_Time"
@@ -115,13 +140,15 @@ def load_and_merge_logs(folder_path):
             merged_df[f"{prefix}_Delta"] = merged_df[end_col] - merged_df[
                 start_col]
             merged_df.drop(columns=[start_col, end_col], inplace=True)
-            if prefix.startswith("DS_"):
-                merged_df[f"{prefix}_Delta"] = (
-                    merged_df[f"{prefix}_Delta"] /
-                    1000).round().astype(int)
+            merged_df = round_to_ms(merged_df, f"{prefix}_Delta")
+    
+    if "BLE_transmission_time_Delta" in merged_df.columns and "S_PROC_Delta" in merged_df.columns and "R_PROC_Delta" in merged_df.columns and "RTT_Delta" in merged_df.columns:
+        merged_df["BLE_transmission_time_Delta"] = merged_df["RTT_Delta"] - merged_df["BLE_transmission_time_Delta"]- merged_df["S_PROC_Delta"]- merged_df["R_PROC_Delta"]
+    
+    if "NTNU_network_time_Delta" in merged_df.columns and "DS_PROC_Delta" in merged_df.columns:
+        merged_df["NTNU_network_time_Delta"] -= merged_df["DS_PROC_Delta"]
 
     return merged_df
-
 
 def load_multiple_logs(data_path, encryption_methods, count):
     return {
@@ -157,7 +184,29 @@ def get_stats(frames: dict, scen: int, category= "RTT"):
             stats[f"Std_{category}"].append(frame[f"{category}_Delta"].std())
     return pd.DataFrame(stats)
 
+def add_hw_and_networking_time(frames):
+    for encryption_method in encryption_methods:
+        for i in range(0, scenarios):
+            try:
+                frames[encryption_method][i]["HW_and_Network_Delta"] = frames[encryption_method][i]["RTT_Delta"] - frames[encryption_method][i]["S_PROC_Delta"]- frames[encryption_method][i]["R_PROC_Delta"] - frames[encryption_method][i]["GW_DS_PROC_Delta"] - frames[encryption_method][i]["GW_US_PROC_Delta"] - frames[encryption_method][i]["DS_PROC_Delta"]
+                frames[encryption_method][i]["percent_of_RTT_Delta"] = frames[encryption_method][i]["HW_and_Network_Delta"] / frames[encryption_method][i]["RTT_Delta"]*100
+            except Exception as e:
+                if frames[encryption_method][i] is not None:
+                    frames[encryption_method][i]["HW_and_Network_Delta"] = 0
 
+def add_encyprion_time_of_RTT(frames):
+    for encryption_method in encryption_methods:
+        for i in range(0, scenarios):
+            try:
+                frames[encryption_method][i]["DS_crypto_time_Delta"] = frames[encryption_method][i]["DS_ENC_Delta"] + frames[encryption_method][i]["DS_DEC_Delta"]
+                frames[encryption_method][i]["DS_encryption_time_of_RTT_Delta"] = frames[encryption_method][i]["DS_crypto_time_Delta"] / frames[encryption_method][i]["RTT_Delta"]*100 
+                frames[encryption_method][i]["S_crypto_time_Delta"] = frames[encryption_method][i]["ENC_Delta"] + frames[encryption_method][i]["DEC_Delta"]
+                frames[encryption_method][i]["S_encryption_time_of_RTT_Delta"] = frames[encryption_method][i]["S_crypto_time_Delta"] / frames[encryption_method][i]["RTT_Delta"]*100
+            except Exception as e:
+                print(e)
+                if frames[encryption_method][i] is not None:
+                    frames[encryption_method][i]["DS_encryption_time_of_RTT_Delta"] = 0
+                    frames[encryption_method][i]["S_encryption_time_of_RTT_Delta"] = 0
 
 def get_encryption_stats(frames: dict, encryption_method: str, category= "RTT") -> pd.DataFrame:
     stats: Dict[str, List[float]] = {f"Mean_{category}": [], f"Std_{category}": []}
@@ -200,7 +249,13 @@ def plot_bar_results(frames, metric, scenarios=12):
 
     # Labels and ticks
     ax.set_xlabel("Scenario")
-    ax.set_ylabel("t [ms]")
+    if metric == "percent_of_RTT":
+        ax.set_ylabel("% of RTT")
+        ax.set_ylim(90, 100)
+    elif metric == "encryption_time_of_RTT":
+        ax.set_ylabel("% of RTT")
+    else:
+        ax.set_ylabel("t [ms]")
     ax.set_title(f"Mean {LABEL_ALIASES.get(metric)} per Scenario")
     ax.set_xticks(x + width)
     ax.set_xticklabels(scens)

@@ -436,6 +436,18 @@ void send_plaintext_temperature() {
      UNUSED(channel);
      if (packet_type != HCI_EVENT_PACKET) return;
 
+
+    //  if (event == HCI_EVENT_LE_META) {
+    //      uint8_t subevent = packet[2];
+    //      if (subevent == HCI_SUBEVENT_LE_CONNECTION_COMPLETE) {
+    //          // bytes 14–15 are connection_interval in units of 1.25 ms
+    //          uint16_t conn_interval_ticks = little_endian_read_16(packet, 14);
+    //          float conn_interval_ms = conn_interval_ticks * 1.25f;
+    //          printf("BLE connection interval = %u ticks = %.2f ms\n",
+    //                 conn_interval_ticks, conn_interval_ms);
+    //      }
+
+
      uint8_t event_type = hci_event_packet_get_type(packet);
      switch(event_type){
          case BTSTACK_EVENT_STATE:
