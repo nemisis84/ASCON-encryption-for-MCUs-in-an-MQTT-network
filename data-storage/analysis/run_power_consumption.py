@@ -268,11 +268,27 @@ def none_traces(orig_df):
 
     return [df1, df2, df3, df4, df5, df6, df7, df8, df9, df10, df11, df12]
 
+def mask_initial_scenarios_inplace(
+    df: pd.DataFrame,
+    exclude_cols: list = ["All periods power [mW]"],
+    num_scenarios: int = 4,
+    scenario_prefix: str = "scen_",
+    na_value: str = "Not applicable"
+) -> None:
+
+    # 1) Build list of scenario index names to mask
+    rows_to_mask = [f"{scenario_prefix}{i}" for i in range(1, num_scenarios+1)]
+    # 2) Determine columns *to* mask (all minus the excluded ones)
+    cols_to_mask = [c for c in df.columns if c not in exclude_cols]
+    # 3) Assign
+    df.loc[rows_to_mask, cols_to_mask] = na_value
+
+
 
 def process_encryption_method(encryption_method, path, traces):
     print(f"Processing {encryption_method} traces")
     orig_df = h.read_data(path)
-    print(len(orig_df))
+
     dfs = traces(orig_df)
     del orig_df
     gc.collect()
@@ -280,8 +296,9 @@ def process_encryption_method(encryption_method, path, traces):
     # 4) Your fixed parameters
     smooth_s = 0.03
     thresh = 0.120
-    min_gap_s = 0.5
-
+    min_gap_s = 0.3
+    target_fs = 2000
+    early_window_ms = 35
     # 5) Process one scenario at a time
     rows = []
     for i in range(len(dfs)):
@@ -290,9 +307,11 @@ def process_encryption_method(encryption_method, path, traces):
         segmented = h.fast_segment(dfs[i],
                                    value_col='Value',
                                    fs=fs,
+                                   target_fs=target_fs,
                                    smooth_s=smooth_s,
                                    thresh=thresh,
-                                   min_gap_s=min_gap_s)
+                                   min_gap_s=min_gap_s,
+                                   early_window_ms=early_window_ms)
 
 
         h.calulate_energy(segmented) # Watt to energy
@@ -303,10 +322,14 @@ def process_encryption_method(encryption_method, path, traces):
         high_periods = h.summarize_high_intervals(segmented,
                                                 value_col='energy[mJ]',
                                                 state_col='state',
-                                                time_col='Timestamp') # Calculate the high energy consumption periods
+                                                time_col='Timestamp',
+                                                early_window_ms=early_window_ms) # Calculate the high energy consumption periods
 
         mean_high_energy_consumption = high_periods["sum_value"].mean() # Mean energy usage per high period
         std_high_energy_consumption = high_periods["sum_value"].std() #std energy usage per high period
+
+        early_window_sum = high_periods[f"initial_{early_window_ms}ms_sum"].mean() # Mean energy usage in the first early_window_ms
+        early_window_std = high_periods[f"initial_{early_window_ms}ms_sum"].std() #std energy usage in the first early_window_ms
 
         duration_means = high_periods["duration_s"].mean() # Duation of high energy consumption periods
         duration_stds = high_periods["duration_s"].std() #std duration of high energy consumption periods
@@ -320,9 +343,10 @@ def process_encryption_method(encryption_method, path, traces):
             stats['low_mean'],
             'All periods [W]':
             stats['mean'],
-            'High energy consumption [mJ]':
+            'High period energy consumption [mJ]':
             (mean_high_energy_consumption, std_high_energy_consumption),
             'High durations [s]': (duration_means, duration_stds),
+            f'First {early_window_ms}ms [mJ]': (early_window_sum, early_window_std),
         })
 
         # drop this scenario’s data before moving on
@@ -335,18 +359,28 @@ def process_encryption_method(encryption_method, path, traces):
 
     # Format each cell as “mean ± std”
     for col in ['High periods [W]', 'Low periods [W]', 'All periods [W]']:
-        table[col[:-2]+"mW]"] = table[col].apply(
-            lambda t: f"{t[0] * 1000:.6f} ± {t[1] * 1000:.6f}")
+        table[col[:-3]+"power [mW]"] = table[col].apply(
+            lambda t: f"{t[0] * 1000:.3f} ± {t[1] * 1000:.3f}")
         table.drop(columns=[col], inplace=True)
-    table["High energy consumption [mJ]"] = table[
-        "High energy consumption [mJ]"].apply(
+    
+    table["High period energy consumption [mJ]"] = table[
+        "High period energy consumption [mJ]"].apply(
             lambda t: f"{t[0]:.3f} ± {t[1]:.3f}")
+    
     table["High durations [s]"] = table["High durations [s]"].apply(
-        lambda t: f"{t[0]:.2f} ± {t[1]:.2f}")
+            lambda t: f"{t[0]:.2f} ± {t[1]:.2f}")
+    
+    table[f"First {early_window_ms}ms [mJ]"] = table[f"First {early_window_ms}ms [mJ]"].apply(
+            lambda t: f"{t[0]:.3f} ± {t[1]:.3f}")
 
+    mask_initial_scenarios_inplace(table,
+        exclude_cols=["All periods power [mW]"],
+        num_scenarios=4,
+        scenario_prefix="scen_"
+    )
     # 7) Write out to CSV
     out_path = os.path.join("..", "results", "avg_power_consumptions",
-                            f"power_consumption_{encryption_method}.csv")
+                            f"power_consumption_{encryption_method}_{early_window_ms}.csv")
     table.to_csv(out_path)
     print(f"Wrote summary to {out_path}")
 
@@ -360,7 +394,7 @@ if __name__ == "__main__":
     encryption_methods = {
         "ascon": (ascon_traces, "ascon1-6:8-12"),
         "none": (none_traces, "none1-11"),
-        "aes-cgm": (aes_gcm_traces, "aes-gcm1-12"),
+        "aes-gcm": (aes_gcm_traces, "aes-gcm1-12"),
         "masked-ascon": (masked_ascon_traces, "masked-ascon2:7-9:12")
     }
 

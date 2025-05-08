@@ -334,169 +334,118 @@ def read_data(path, downsample=2):
     return df
 
 
-def plot_scenarios(dfs, ylim=(0.03, 0.075)):
-    fig, axes = plt.subplots(3, 4, figsize=(15, 12))
+def mark_initial_high_window(df, state_col='state',
+                             fs=4000,
+                             window_ms=30,
+                             new_col='is_initial_high_30ms'):
+    """
+    Given df[state_col] with 'high'/'low', mark True for the first `window_ms` 
+    of each high period.
+    """
+    mask = df[state_col] == 'high'
+    # identify runs
+    run_id = (mask != mask.shift(fill_value=False)).cumsum()
+    # allocate
+    result = pd.Series(False, index=df.index, name=new_col)
 
-    for idx, ax in enumerate(axes.flatten()):
-        df = dfs[idx].iloc[::4]
-        ax.plot(df['Timestamp'], df['Value'], linewidth = 0.2)
-        ax.set_title(f"Scenario {idx+1}")
-        ax.set_xlabel("Time (s)")
-        ax.set_ylabel("Current (A)")
-        if ylim is not None:
-            ax.set_ylim(ylim)
+    # how many samples in 350 ms?
+    n_win = int(window_ms * fs / 1000)
 
-    plt.tight_layout()
-    plt.show()
+    # only iterate runs that actually are 'high'
+    for run in np.unique(run_id[mask]):
+        idxs = np.nonzero(run_id == run)[0]
+        # pick the first n_win samples of this run
+        head = idxs[:n_win]
+        result.iloc[head] = True
 
+    return result
 
 def fast_segment(df, value_col="Value", fs=4000,
-                 target_fs=100,     # decimate to 50 Hz
-                 smooth_s=0.5,     # 0.5 s window @50 Hz → 25 samples
-                 thresh=0.035,        # pick your threshold on the smoothed decimated signal
-                 min_gap_s=0.1     # close gaps shorter than 0.1 s @50 Hz → 5 samples
+                 target_fs=100,
+                 smooth_s=0.5,
+                 thresh=0.035,
+                 min_gap_s=0.1,
+                 early_window_ms = 30
                 ):
     sig = df[value_col].values.astype(float)
 
     # 1) decimate
-    q = int(fs/target_fs)
+    q = max(1, int(fs/target_fs))
     sig_dec = decimate(sig, q, ftype="fir", zero_phase=True)
 
-    # 2) smooth with convolution (fast)
-    win = int(smooth_s * target_fs)
+    # 2) smooth
+    win = max(1, int(smooth_s * target_fs))
     kernel = np.ones(win)/win
     roll_dec = np.convolve(sig_dec, kernel, mode="same")
 
-    # 3) threshold
+    # 3) threshold + 4) close gaps
     mask_dec = roll_dec > thresh
-
-    # 4) close tiny gaps
-    gap = int(min_gap_s * target_fs)
+    gap = max(1, int(min_gap_s * target_fs))
     mask_dec = binary_closing(mask_dec, structure=np.ones(gap))
 
-    # 5) upsample mask back to fs
+    # 5) upsample back
     mask_full = np.repeat(mask_dec, q)[:len(sig)]
 
-    # 6) add to DataFrame
+    # 6) assign states
     df["state"] = np.where(mask_full, "high", "low")
+
+    # 7) mark the first early_window_ms ms of each high period
+    df["is_initial_high"] = mark_initial_high_window(
+        df, state_col="state", fs=fs, window_ms=early_window_ms
+    )
+
     return df
 
-def high_period_lengths(df, state_col='state', time_col='Timestamp', fs=4000):
-    """
-    Identify contiguous 'high' periods in a segmented DataFrame and return their lengths.
-    
-    Returns a DataFrame with columns:
-      - start_time:      Timestamp of the first sample in the high period
-      - end_time:        Timestamp of the last sample in the high period
-      - length_samples:  Number of samples in the high period
-      - length_s:        Duration of the high period in seconds
-    """
-    # Boolean mask: True when state is 'high'
-    mask = df[state_col] == 'high'
-    # Label runs where mask is constant
-    run_id = (mask != mask.shift(fill_value=False)).cumsum()
-    # Group only the high runs
-    high_runs = df[mask].groupby(run_id)
-
-    # Build the summary
-    results = pd.DataFrame({
-        'start_time':     high_runs[time_col].first(),
-        'end_time':       high_runs[time_col].last(),
-        'length_samples': high_runs.size()
-    })
-    # Convert sample count to seconds
-    results['length_s'] = results['length_samples'] / fs
-
-    return results.reset_index(drop=True)
 
 def summarize_high_intervals(
     df,
     value_col='Value',
     state_col='state',
-    time_col='Timestamp'
+    time_col='Timestamp',
+    init_col='is_initial_high',
+    early_window_ms=30,
 ):
-    """
-    Summarize contiguous 'high' periods, aggregating the provided value column.
-    
-    Returns a DataFrame with columns:
-      - start_time:   Timestamp of the first sample in the high period
-      - end_time:     Timestamp of the last sample in the high period
-      - duration_s:   end_time - start_time (s)
-      - sum_value:    Sum of value_col over the high period
-      - mean_value:   Mean of value_col over the high period
-      - std_value:    Standard deviation of value_col over the high period
-    """
-    # Boolean mask for high state
-    mask = df[state_col] == 'high'
-    # Label runs where mask changes value
+
+    # 1) Mask & run-id for high periods
+    mask   = df[state_col] == 'high'
     run_id = (mask != mask.shift(fill_value=False)).cumsum()
-    # Select only high-state rows and assign run labels
-    high = df[mask].copy()
+
+    # 2) Slice only the high rows, annotate run
+    high = df.loc[mask, [time_col, value_col, init_col]].copy()
     high['run'] = run_id[mask]
 
-    # Aggregate per run
+    # 3) Aggregate the full-period stats
     agg = high.groupby('run').agg(
-        start_time=pd.NamedAgg(column=time_col, aggfunc='first'),
-        end_time=pd.NamedAgg(column=time_col, aggfunc='last'),
-        sum_value=pd.NamedAgg(column=value_col, aggfunc='sum'),
+        start_time=pd.NamedAgg(column=time_col,  aggfunc='first'),
+        end_time  =pd.NamedAgg(column=time_col,  aggfunc='last'),
+        sum_value =pd.NamedAgg(column=value_col, aggfunc='sum'),
         mean_value=pd.NamedAgg(column=value_col, aggfunc='mean'),
-        std_value=pd.NamedAgg(column=value_col, aggfunc='std'),
+        std_value =pd.NamedAgg(column=value_col, aggfunc='std'),
     )
-    # Compute duration
+
+    # 4) Compute the initial_Xms_sum and std
+    init = high[high[init_col]].groupby('run')[value_col]
+    init_sum = init.sum().rename(f'initial_{early_window_ms}ms_sum')
+    init_std = init.std().rename(f'finitial_{early_window_ms}ms_std')
+    agg = agg.join(init_sum).join(init_std).fillna({
+        f'initial_{early_window_ms}ms_sum': 0.0,
+        f'initial_{early_window_ms}ms_std': 0.0
+    })
+
+    # 5) Duration
     agg['duration_s'] = agg['end_time'] - agg['start_time']
 
+    # clean up
     del high, mask
     gc.collect()
 
     return agg.reset_index(drop=True)
 
+
+
 def calulate_energy(segmented):
     segmented["energy[mJ]"] = segmented["Value"]/4000*1e3
 
-def summarize_high_periods(df,
-                           energy_col='energy',
-                           state_col='state',
-                           time_col='Timestamp'):
-    """
-    Summarize contiguous 'high' periods in a DataFrame where the energy per sample
-    is already computed in `energy_col`.
-
-    Returns a DataFrame with columns:
-      - start_time:   Timestamp of the first sample in the high period
-      - end_time:     Timestamp of the last sample in the high period
-      - duration_s:   end_time - start_time (s)
-      - total_energy: Sum of energy_col over the period
-      - sample_count: Number of samples in the period
-      - avg_power_per_sample: total_energy / sample_count
-    """
-    mask = df[state_col] == 'high'
-    # Label runs of constant mask value
-    run_id = (mask != mask.shift(fill_value=False)).cumsum()
-    # Filter to high runs
-    high_df = df[mask].copy()
-    high_df['run'] = run_id[mask]
-
-    rows = []
-    for run, grp in high_df.groupby('run'):
-        start = grp[time_col].iat[0]
-        end = grp[time_col].iat[-1]
-        duration = end - start
-        total_energy = grp[energy_col].sum()
-        rows.append({
-            'start_time': start,
-            'end_time': end,
-            'duration_s': duration,
-            'total_energy': total_energy,
-        })
-    del high_df
-    gc.collect()
-
-    return pd.DataFrame(rows).reset_index(drop=True)
-
-# Example usage:
-# df_energy is your DataFrame with 'state' and 'energy' columns
-# summary = summarize_high_periods(df_energy, energy_col='energy', state_col='state', time_col='Timestamp')
-# tools.display_dataframe_to_user(name="High Period Energy Summary", dataframe=summary)
 
 
 def plot_segmented(df,
