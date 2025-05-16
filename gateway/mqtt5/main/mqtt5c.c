@@ -98,13 +98,13 @@
     uint64_t t_start = esp_timer_get_time();
 
     if (topic == NULL || data == NULL || topic_len <= 0 || data_len <= 0) {
-        ESP_LOGE(TAG, "❌ Invalid input to ble_forward");
+        ESP_LOGE(TAG, "Invalid input to ble_forward");
         return;
     }
 
     char clean_topic[128]; 
     if (topic_len >= sizeof(clean_topic)) {
-        ESP_LOGE(TAG, "❌ Topic too long!");
+        ESP_LOGE(TAG, "Topic too long!");
         return;
     }
 
@@ -112,11 +112,11 @@
     clean_topic[topic_len] = '\0';  // Ensure null termination
 
     if (topic_len < 5 || strcmp(clean_topic + topic_len - 5, "/PICO") != 0) {
-        ESP_LOGI(TAG, "🔹 Ignoring message, not for PICO.");
+        ESP_LOGI(TAG, "Ignoring message, not for PICO.");
         return;
     }
 
-    ESP_LOGI(TAG, "🔹 Forwarding MQTT message to BLE (%d bytes)", data_len);
+    ESP_LOGI(TAG, "Forwarding MQTT message to BLE (%d bytes)", data_len);
     ESP_LOGI(TAG, "Forwarding message: %.*s", data_len, data);
     ble_forward((uint8_t *)data, data_len, t_start);
 }
@@ -208,7 +208,7 @@
          return;
      }
 
-    //  ESP_LOGI(TAG, "🔹 MQTT Debug: Data Before Publish (Raw HEX)");
+    //  ESP_LOGI(TAG, "MQTT Debug: Data Before Publish (Raw HEX)");
     //  ESP_LOG_BUFFER_HEX(TAG, data, len);  
 
     int msg_id = esp_mqtt_client_publish(client, topic, (const char *)data, len, 1, 0);

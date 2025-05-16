@@ -54,31 +54,30 @@ void log_start_decryption_time(uint16_t seq_num) {
     if (seq_num >= max_packets || seq_num <0) return;
 
     decryption_times[seq_num].seq_num = seq_num;
-    decryption_times[seq_num].start_time = (uint64_t)time_us_64();  // Example with seconds (use microseconds for precision)
+    decryption_times[seq_num].start_time = (uint64_t)time_us_64();
 }
 
 void log_end_decryption_time(uint16_t seq_num) {
     if (seq_num >= max_packets || seq_num <0) return;
     
-    decryption_times[seq_num].end_time = (uint64_t)time_us_64();  // Example with seconds (use microseconds for precision)
+    decryption_times[seq_num].end_time = (uint64_t)time_us_64();
 }
 
 void log_start_encryption_time(uint16_t seq_num) {
     if (seq_num >= max_packets || seq_num <0) return;
 
     encryption_times[seq_num].seq_num = seq_num;
-    encryption_times[seq_num].start_time = (uint64_t)time_us_64();  // Example with seconds (use microseconds for precision)
+    encryption_times[seq_num].start_time = (uint64_t)time_us_64();
 }
 
 void log_end_encryption_time(uint16_t seq_num) {
     if (seq_num >= max_packets || seq_num <0) return;
     
-    encryption_times[seq_num].end_time = (uint64_t)time_us_64();  // Example with seconds (use microseconds for precision)
+    encryption_times[seq_num].end_time = (uint64_t)time_us_64();
 }
 
 
 void generate_nonce(uint8_t *nonce) {
-    // ascon_random_fetch(&prng_state, nonce, 16);
     rng_128_t rand128;
     get_rand_128(&rand128);
     memcpy(nonce, &rand128, NONCE_SIZE);
@@ -90,7 +89,7 @@ void encrypt(const void *data, size_t data_size, uint8_t *output, size_t *output
     size_t ad_len = strnlen(associated_data, 50);
     
     if (ad_len >= 50) {
-        printf("❌ AD length too long or missing null terminator!\n");
+        printf("AD length too long or missing null terminator!\n");
         return;
     }
 
@@ -107,7 +106,7 @@ void encrypt(const void *data, size_t data_size, uint8_t *output, size_t *output
     } else if (SELECTED_ENCRYPTION_MODE == ENCRYPTION_ASCON_UNMASKED ||
                SELECTED_ENCRYPTION_MODE == ENCRYPTION_AES_GCM) {
         unsigned long long clen = 0;
-        crypto_aead_encrypt(output, &clen,
+        crypto_aead_encrypt(output, &clen, // Same function call for ASCON and AES
             (const uint8_t *)data, data_size,
             (const uint8_t *)associated_data, ad_len,
             NULL, nonce, key_128);
@@ -122,7 +121,7 @@ void encrypt(const void *data, size_t data_size, uint8_t *output, size_t *output
 int parse_unencrypted(uint8_t *received_data, size_t received_len,
     uint8_t **output, size_t *output_len, uint16_t *sequence_number) {
     if (received_len < 5) {
-        printf("❌ Error: Received packet too small\n");
+        printf("Error: Received packet too small\n");
         return -1;
     }
 
@@ -135,7 +134,7 @@ int parse_unencrypted(uint8_t *received_data, size_t received_len,
     }
 
     if (ad_start_index == 0) {
-        printf("❌ Error: Associated Data not found in payload.\n");
+        printf("Error: Associated Data not found in payload.\n");
         return -1;
     }
 
@@ -171,7 +170,7 @@ int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_
         return -1;
     }
 
-    // 🔹 Locate the start of Associated Data (AD)
+    //Locate the start of Associated Data (AD)
     size_t ad_start_index = 0;
 
     for (size_t i = received_len - 1; i >= NONCE_SIZE; i--) {
@@ -182,33 +181,33 @@ int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_
     }
 
     if (ad_start_index == 0) {
-        printf("❌ Error: Associated Data not found in payload.\n");
+        printf("Error: Associated Data not found in payload.\n");
         return -1;
     }
 
-    // 🔹 Extract Associated Data
+    //Extract Associated Data
     size_t ad_len = received_len - ad_start_index;
     char extracted_ad[ad_len + 1];
     memcpy(extracted_ad, received_data + ad_start_index, ad_len);
     extracted_ad[ad_len] = '\0';  // Null-terminate
 
-    // 🔹 Parse Associated Data: Format "|sensor_id|seq_number"
+    //Parse Associated Data: Format "|sensor_id|seq_number"
     char received_sensor_id[20];  // Buffer for sensor ID
 
     int temp_seq_num = 0;
     if (sscanf(extracted_ad, "|%[^|]|%d", received_sensor_id, &temp_seq_num) != 2) {
-        printf("❌ Error: Failed to parse Associated Data.\n");
+        printf("Error: Failed to parse Associated Data.\n");
         return -1;
     }
     *sequence_number = (uint16_t)temp_seq_num;
     
-    // 🔹 Validate Sensor ID
+    //Validate Sensor ID
     if (strcmp(received_sensor_id, sensor_ID) != 0) {
-        printf("❌ Sensor ID Mismatch! Expected: %s, Received: %s\n", sensor_ID, received_sensor_id);
+        printf("Sensor ID Mismatch! Expected: %s, Received: %s\n", sensor_ID, received_sensor_id);
         return -1;
     }
 
-    // 🔹 Extract Nonce (Before AD, 16 bytes)
+    //Extract Nonce
     size_t nonce_start_index = ad_start_index - NONCE_SIZE;
     uint8_t received_nonce[NONCE_SIZE];
     memcpy(received_nonce, received_data + nonce_start_index, NONCE_SIZE);
@@ -219,7 +218,7 @@ int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_
     uint8_t *decrypted_data = (uint8_t *)malloc(ciphertext_len);
 
     if (!decrypted_data) {
-        printf("❌ malloc failed!\n");
+        printf("malloc failed!\n");
         return -1;
     }
 
@@ -237,7 +236,7 @@ int decrypt(uint8_t *received_data, size_t received_len, uint8_t **output, size_
         case ENCRYPTION_ASCON_UNMASKED:
         case ENCRYPTION_AES_GCM:
             log_start_decryption_time(*sequence_number);
-            status = crypto_aead_decrypt(decrypted_data, output_len,
+            status = crypto_aead_decrypt(decrypted_data, output_len, // Same function call for ASCON and AES
                 NULL, ciphertext, ciphertext_len,
                 (uint8_t *)extracted_ad, ad_len,
                 received_nonce, key_128);

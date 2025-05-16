@@ -1,13 +1,9 @@
-# Generated Cmake Pico project file
-
 cmake_minimum_required(VERSION 3.13)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Initialise pico_sdk from installed location
-# (note this can come from environment, CMake cache etc)
 
 # == DO NOT EDIT THE FOLLOWING LINES for the Raspberry Pi Pico VS Code Extension to work ==
 if(WIN32)
@@ -28,7 +24,7 @@ set(PICO_BOARD pico_w CACHE STRING "Board type")
 # Pull in Raspberry Pi Pico SDK (must be before project)
 include(pico_sdk_import.cmake)
 
-project(masked-ascon-sensor C CXX ASM)
+project(sensor C CXX ASM)
 
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()
@@ -37,7 +33,7 @@ pico_sdk_init()
 set(SELECTED_ENCRYPTION_MODE "AES_GCM" CACHE STRING "Selected encryption mode")
 set_property(CACHE SELECTED_ENCRYPTION_MODE PROPERTY STRINGS ASCON_MASKED ASCON_UNMASKED AES_GCM NONE)
 
-# Determine paths, sources, and numeric ID for compiler
+# Determine paths and settings based on the selected encryption mode
 if(SELECTED_ENCRYPTION_MODE STREQUAL "ASCON_MASKED")
     set(ENCRYPTION_MODE_ID 1)
     set(ASCON_PATH ${CMAKE_CURRENT_LIST_DIR}/libs/ascon-suite)
@@ -69,23 +65,27 @@ endif()
 
 
 
-add_executable(masked-ascon-sensor
+add_executable(sensor
     server.c server_common.c
     encryption.c
     ${CRYPTO_SOURCES}
     ${ENCRYPTION_SOURCES}
 )
 
-target_compile_definitions(masked-ascon-sensor PRIVATE SELECTED_ENCRYPTION_MODE=${ENCRYPTION_MODE_ID})
+target_compile_definitions(sensor PRIVATE SELECTED_ENCRYPTION_MODE=${ENCRYPTION_MODE_ID})
 
-pico_enable_stdio_usb(masked-ascon-sensor 1)
 
-target_include_directories(masked-ascon-sensor PRIVATE
+# Compiler flag to diable optimisations
+target_compile_options(sensor PRIVATE "-O0")
+
+pico_enable_stdio_usb(sensor 1)
+
+target_include_directories(sensor PRIVATE
     ${CMAKE_CURRENT_LIST_DIR}
     ${CRYPTO_INCLUDE}
 )
 
-target_link_libraries(masked-ascon-sensor
+target_link_libraries(sensor
     pico_stdlib
     pico_btstack_ble
     pico_btstack_cyw43
@@ -95,12 +95,12 @@ target_link_libraries(masked-ascon-sensor
 )
 
 if(SELECTED_ENCRYPTION_MODE STREQUAL "ASCON_MASKED")
-    target_link_libraries(masked-ascon-sensor ascon)
+    target_link_libraries(sensor ascon)
 endif()
 
 
-pico_btstack_make_gatt_header(masked-ascon-sensor PRIVATE "${CMAKE_CURRENT_LIST_DIR}/temp_sensor.gatt")
+pico_btstack_make_gatt_header(sensor PRIVATE "${CMAKE_CURRENT_LIST_DIR}/temp_sensor.gatt")
 
-pico_add_extra_outputs(masked-ascon-sensor)
+pico_add_extra_outputs(sensor)
 
 

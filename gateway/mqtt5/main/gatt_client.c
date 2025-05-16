@@ -505,10 +505,8 @@ int extract_sequence_number(const uint8_t *data, size_t len) {
 
 void ble_forward(uint8_t *data, size_t len, uint64_t t_start) {
 
-    // ESP_LOGI(GATTC_TAG, "🔹Forward message to sensor: %.*s", len, data);
-    // ESP_LOGI(GATTC_TAG, "🔹 Writing to Characteristic Handle: %d", gl_profile_tab[PICO_APP_ID].char_handle);
 
-    // ✅ Send data to the characteristic
+    // Send data to the characteristic
     esp_err_t err = esp_ble_gattc_write_char(
         gl_profile_tab[PICO_APP_ID].gattc_if,
         gl_profile_tab[PICO_APP_ID].conn_id,
@@ -548,7 +546,7 @@ void ble_forward(uint8_t *data, size_t len, uint64_t t_start) {
             mqtt_publish("/ascon-e2e/data-storage", (char *)ds_payload, 1 + ds_size, 0);
             free(ds_payload);
         } else {
-            ESP_LOGE(GATTC_TAG, "❌ Failed to allocate memory for downstream timings");
+            ESP_LOGE(GATTC_TAG, "Failed to allocate memory for downstream timings");
         }
     
         // Upstream marker
@@ -565,7 +563,7 @@ void ble_forward(uint8_t *data, size_t len, uint64_t t_start) {
             mqtt_publish("/ascon-e2e/data-storage", (char *)us_payload, 1 + us_size, 0);
             free(us_payload);
         } else {
-            ESP_LOGE(GATTC_TAG, "❌ Failed to allocate memory for upstream timings");
+            ESP_LOGE(GATTC_TAG, "Failed to allocate memory for upstream timings");
         }
 
         init_processing_logging();

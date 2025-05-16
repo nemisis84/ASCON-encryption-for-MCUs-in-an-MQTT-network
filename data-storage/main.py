@@ -151,7 +151,7 @@ class SecureMQTTClient:
         """
         print("Exporting data...")
         if not self.received_bytes:
-            print("❌ No data to export.")
+            print("No data to export.")
             return
 
         # Define the RTT_Entry struct format (uint16_t, uint64_t, uint64_t)
@@ -191,7 +191,7 @@ class SecureMQTTClient:
         # Save DataFrame to CSV
         df.to_csv(file_path, index=False)
 
-        print(f"✅ Data successfully exported to {file_path}")
+        print(f"Data successfully exported to {file_path}")
         self.received_bytes = b""  # Reset the received bytes
         self.receive_data_mode = False
 
@@ -263,7 +263,7 @@ class SecureMQTTClient:
         try:
             ad_start_index = payload.rindex(b"|TEMP-")
         except ValueError:
-            print("❌ Error: Associated Data not found.")
+            print("Error: Associated Data not found.")
             return None, None, None
         associated_data = payload[ad_start_index:]
         return associated_data
@@ -281,7 +281,7 @@ class SecureMQTTClient:
         try:
             ad_start_index = payload.rindex(b"|TEMP-")
         except ValueError:
-            print("❌ Error: Associated Data not found.")
+            print("Error: Associated Data not found.")
             return None, None, None
 
         associated_data = payload[ad_start_index:]  # AD starts from this index

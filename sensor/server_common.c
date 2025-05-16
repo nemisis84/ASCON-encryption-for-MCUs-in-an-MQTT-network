@@ -40,12 +40,10 @@
  #define MAX_PACKET_SIZE HCI_ACL_PAYLOAD_SIZE // Maximum size of a packet to prevent out-of-memory issues
 
 
- // Define global variables
- int max_packets;
+ int max_packets = 100;
  int payload_multiple;
  int transmission_interval_ms;
- 
- max_packets = 100;
+
 
  void configure_scenario(int scenario) {
      switch (scenario) {
@@ -110,7 +108,7 @@
              transmission_interval_ms = INTERVAL_1_MINUTES;
              break;
          default:
-             printf("❌ Invalid scenario: %d\n", scenario);
+             printf("Invalid scenario: %d\n", scenario);
              break;
      }
  }
@@ -160,14 +158,15 @@ data_entry *RTT_table = NULL;
 
 
 void init_timing_logging() {
-    // Free previous memory if allocated
+    // Initialize the timing stucts
+
     if (encryption_times) free(encryption_times);
     if (decryption_times) free(decryption_times);
     if (sending_processing_times) free(sending_processing_times);
     if (receiving_processing_times) free(receiving_processing_times);
     if (RTT_table) free(RTT_table);
 
-    // Reallocate with updated max_packets
+
     encryption_times = calloc(max_packets, sizeof(data_entry));
     decryption_times = calloc(max_packets, sizeof(data_entry));
     sending_processing_times = calloc(max_packets, sizeof(data_entry));
@@ -176,7 +175,7 @@ void init_timing_logging() {
 
     if (!encryption_times || !decryption_times || !sending_processing_times ||
         !receiving_processing_times || !RTT_table) {
-        printf("❌ Failed to allocate timing arrays\n");
+        printf("Failed to allocate timing arrays\n");
         abort();
     }
 }
@@ -203,12 +202,15 @@ void log_end_time(uint16_t seq_num) {
     receiving_processing_times[seq_num].end_time = end_time;
 }
 
+// Function to log the end of processing time
 void log_end_sending_processing_time(uint16_t seq_num) {
     if (seq_num >= max_packets || seq_num < 0) return;
 
     sending_processing_times[seq_num].end_time = (uint64_t)time_us_64();
 }
 
+
+// Function to log the start of processing time
 void log_start_recieving_processing_time(uint16_t seq_num, uint64_t start_time) {
     if (seq_num >= max_packets || seq_num < 0) return;
 
@@ -272,7 +274,7 @@ void init_active_transfer() {
 
 void send_struct_data(void *data, size_t data_size, const char *data_type, transfer_state_t transfer_type) {
     if (!data || data_size == 0) {
-        printf("❌ Error: No data to send for %s.\n", data_type);
+        printf("Error: No data to send for %s.\n", data_type);
         return;
     }
 
@@ -296,7 +298,7 @@ void send_struct_data(void *data, size_t data_size, const char *data_type, trans
     snprintf(associated_data, sizeof(associated_data), "|%s|%s", sensor_ID, data_type);
     if (att_server_notify(con_handle, ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_VALUE_HANDLE,
                           (const uint8_t *)associated_data, strlen(associated_data)) != 0) {
-        printf("❌ BLE notification failed for associated data.\n");
+        printf("BLE notification failed for associated data.\n");
         return;
     }
 
@@ -304,8 +306,9 @@ void send_struct_data(void *data, size_t data_size, const char *data_type, trans
 }
 
 void send_next_chunk() {
+    // Handles sending the measured data in chunks
     if (active_transfer.bytes_sent >= active_transfer.data_size) {
-        printf("✅ Completed %s transfer (%zu bytes in %d chunks)\n",
+        printf("Completed %s transfer (%zu bytes in %d chunks)\n",
                (active_transfer.transfer_type == TRANSFER_RTT) ? "RTT" :
                (active_transfer.transfer_type == TRANSFER_ENC) ? "ENC" :
                (active_transfer.transfer_type == TRANSFER_DEC) ? "DEC" :
@@ -333,14 +336,13 @@ void send_next_chunk() {
                 poll_temp();  // Ensure fresh data
                 att_server_request_can_send_now_event(con_handle);  // Start sending again
             } else {
-                printf("✅ All BLE experiments completed.\n");
+                printf("All BLE experiments completed.\n");
                 abort();
             }
         }
         return;
     }
-    // printf("Active transfer TYPE is: %d\n", active_transfer.transfer_type);
-    // printf("Sent %zu bytes of %zu\n", active_transfer.bytes_sent, active_transfer.data_size);
+
     size_t bytes_to_send = (active_transfer.data_size - active_transfer.bytes_sent > active_transfer.chunk_size)
                                ? active_transfer.chunk_size
                                : (active_transfer.data_size - active_transfer.bytes_sent);
@@ -352,11 +354,11 @@ void send_next_chunk() {
     int status = att_server_notify(con_handle, ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_VALUE_HANDLE,
                                    send_buffer, bytes_to_send + 1);
 
-    if (status == 0) {  // ✅ Success
+    if (status == 0) {  // Success
         active_transfer.bytes_sent += bytes_to_send;
         active_transfer.current_chunk--;
-    } else {  // ❌ Failed
-        printf("❌ BLE notification failed, retrying...\n");
+    } else {  // Failed
+        printf("BLE notification failed, retrying...\n");
     }
 
     att_server_request_can_send_now_event(con_handle);
@@ -393,7 +395,7 @@ void send_next_chunk() {
         final_message, final_message_len);
     
     if (status != 0) {
-        printf("❌ BLE notification failed! Status: %d, Seq Num: %d\n", status, counter);
+        printf("BLE notification failed! Status: %d, Seq Num: %d\n", status, counter);
     } else {
         log_end_sending_processing_time(counter);
         counter++;
@@ -424,7 +426,7 @@ void send_plaintext_temperature() {
         final_message, final_message_len);
     
     if (status != 0) {
-        printf("❌ BLE notification failed! Status: %d, Seq Num: %d\n", status, counter);
+        printf("BLE notification failed! Status: %d, Seq Num: %d\n", status, counter);
     } else {
         log_end_sending_processing_time(counter);
         counter++;
@@ -442,7 +444,6 @@ void send_plaintext_temperature() {
              if (btstack_event_state_get_state(packet) != HCI_STATE_WORKING) return;
              bd_addr_t local_addr;
              gap_local_bd_addr(local_addr);
-            //  printf("BTstack up and running on %s.\n", bd_addr_to_str(local_addr));
  
              // Setup BLE advertising
              uint16_t adv_int_min = 2000;
@@ -472,7 +473,7 @@ void send_plaintext_temperature() {
                 }
              } else {
                  if (active_transfer.data == NULL) {
-                    //  Sleep for a bit to allow the last packet to be sent
+                    //  Sleep to allow the last packet to be sent
                      sleep_ms(2000);
                      print_all_results();
                      send_struct_data(RTT_table, max_packets * sizeof(data_entry), "RTT", TRANSFER_RTT);
@@ -513,15 +514,13 @@ void recieve_encrypted_data(uint8_t *received_data, size_t received_len, uint16_
 
     if (status == 0) {
         if (decrypted_len % sizeof(uint16_t) != 0) {
-            printf("❌ Decrypted data not aligned. Length = %zu\n", decrypted_len);
+            printf("Decrypted data not aligned. Length = %zu\n", decrypted_len);
             free(decrypted_data);
             return;
         }
         
         int num_entries = decrypted_len / sizeof(uint16_t);
         uint16_t *temperatures = (uint16_t *)decrypted_data;
-        
-        // printf("✅ Decrypted Temperatures successfully! Seq Num: %d\n", sequence_number);
         
         free(decrypted_data);
     } else {
@@ -535,7 +534,6 @@ int att_write_callback(hci_con_handle_t connection_handle, uint16_t att_handle, 
     UNUSED(transaction_mode);
     UNUSED(offset);
     UNUSED(buffer_size);
-    // printf("🔹 ATT Write Callback Triggered! Handle: 0x%X\n", att_handle);
 
     if (att_handle == ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_CLIENT_CONFIGURATION_HANDLE){
         le_notification_enabled = little_endian_read_16(buffer, 0) == GATT_CLIENT_CHARACTERISTICS_CONFIGURATION_NOTIFICATION;
@@ -550,7 +548,6 @@ int att_write_callback(hci_con_handle_t connection_handle, uint16_t att_handle, 
 
     if (att_handle == ATT_CHARACTERISTIC_ORG_BLUETOOTH_CHARACTERISTIC_TEMPERATURE_01_VALUE_HANDLE) {
         if (buffer_size > 0) {
-            // Decrypt and print data
             uint16_t sequence_number = 0;
             recieve_encrypted_data(buffer, buffer_size, &sequence_number);
             log_start_recieving_processing_time(sequence_number, start_time);
@@ -583,7 +580,6 @@ void poll_temp(void) {
     // Typically, Vbe = 0.706V at 27 degrees C, with a slope of -1.721mV (0.001721) per degree. 
     float deg_c = 27 - (reading - 0.706) / 0.001721;
     current_temp = (uint16_t)(deg_c * 100);
-    // printf("Write temp %.2f degc\n", deg_c);
 
     // Shift left to make room for new value
     for (int i = 0; i < payload_multiple - 1; i++) {

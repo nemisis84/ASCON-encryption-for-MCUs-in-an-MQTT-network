@@ -5,10 +5,10 @@
  */
 
 #include <stdio.h>
-#include "btstack.h" //Manages Bluetooth communication
-#include "pico/cyw43_arch.h" // Required for WiFi and Bluetooth
+#include "btstack.h"
+#include "pico/cyw43_arch.h"
 #include "pico/btstack_cyw43.h" 
-#include "hardware/adc.h" // Required for temperature sensor
+#include "hardware/adc.h"
 #include "pico/stdlib.h" 
 #include "encryption.h"
 #include "experiment_settings.h"
@@ -21,7 +21,7 @@
 
 static btstack_timer_source_t heartbeat;
 static btstack_packet_callback_registration_t hci_event_callback_registration;
-int current_scenario = 1;
+int current_scenario = 1; // Define start scenario
 
 
 static void heartbeat_handler(struct btstack_timer_source *ts) {
@@ -35,16 +35,13 @@ static void heartbeat_handler(struct btstack_timer_source *ts) {
     // Restart timer
     btstack_run_loop_set_timer(ts, transmission_interval_ms);
     btstack_run_loop_add_timer(ts);
-
 }
 
 
 int main() {
     stdio_init_all();
 
-
-
-    // Initialize the PRNG
+    // Initialize crypto, scenario settings, and temperature sensor
     init_primitives();
     configure_scenario(current_scenario);
     allocate_temperature_buffer();
@@ -91,7 +88,6 @@ int main() {
     // this is a forever loop in place of where user code would go.
     while(true) {
         sleep_ms(1000);
-        // __wfi(); // wait for interrupt
     }
 #endif
     return 0;
