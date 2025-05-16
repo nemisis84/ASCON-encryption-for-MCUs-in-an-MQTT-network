@@ -1,0 +1,13 @@
+Scenario,High period energy consumption [mJ],High durations [s],First 350ms [mJ],High periods power [mW],Low periods power [mW],All periods power [mW]
+scen_1,Not applicable,Not applicable,Not applicable,Not applicable,Not applicable,128.525 ± 5.321
+scen_2,Not applicable,Not applicable,Not applicable,Not applicable,Not applicable,128.595 ± 5.409
+scen_3,Not applicable,Not applicable,Not applicable,Not applicable,Not applicable,128.804 ± 6.553
+scen_4,Not applicable,Not applicable,Not applicable,Not applicable,Not applicable,129.035 ± 7.650
+scen_5,379.464 ± 19.371,2.95 ± 0.15,45.042 ± 0.065,128.542 ± 4.726,111.738 ± 4.299,116.698 ± 8.853
+scen_6,377.458 ± 21.568,2.94 ± 0.17,45.077 ± 0.090,128.558 ± 4.791,111.739 ± 4.308,116.677 ± 8.861
+scen_7,378.489 ± 21.249,2.94 ± 0.17,45.284 ± 0.093,128.631 ± 5.383,111.733 ± 4.310,116.705 ± 8.996
+scen_8,383.685 ± 19.795,2.98 ± 0.15,45.492 ± 0.123,128.709 ± 5.846,111.743 ± 4.331,116.801 ± 9.142
+scen_9,376.819 ± 23.760,2.93 ± 0.19,45.038 ± 0.080,128.549 ± 4.812,111.714 ± 4.314,112.536 ± 5.657
+scen_10,374.169 ± 21.123,2.91 ± 0.16,45.071 ± 0.077,128.523 ± 4.805,111.687 ± 4.318,112.504 ± 5.652
+scen_11,381.780 ± 17.111,2.97 ± 0.13,45.253 ± 0.075,128.578 ± 5.317,111.657 ± 4.318,112.494 ± 5.709
+scen_12,378.055 ± 22.036,2.94 ± 0.17,45.448 ± 0.099,128.625 ± 5.781,111.646 ± 4.317,112.478 ± 5.726
