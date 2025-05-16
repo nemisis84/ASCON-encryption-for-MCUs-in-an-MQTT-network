@@ -6,7 +6,7 @@ from typing import Dict, List
 from scipy.signal import decimate
 from scipy.ndimage import binary_closing
 
-encryption_methods = ["masked_ASCON", "ASCON", "AES-GCM", "NONE"]
+encryption_methods = ["NONE",  "AES-GCM", "ASCON", "masked_ASCON"]
 scenarios = 12
 metrics = ["RTT", "S_PROC", "R_PROC", "DS_PROC", "DS_ENC", "DS_DEC","GW_US_PROC", "GW_DS_PROC", "ENC", "DEC", "HW_and_Network", "percent_of_RTT", "DS_encryption_time_of_RTT", "S_encryption_time_of_RTT","NTNU_network_time", "BLE_transmission_time"]
 LABEL_ALIASES = {
@@ -276,21 +276,23 @@ def store_means(metric, frames, encryption_methods, output_csv):
 
 def plot_bar_results(means, stds, metric, scenarios=12):
 
-    scens = [f"scen_{i}" for i in range(1, scenarios + 1)]
+    scens = [f"Scen {i}" for i in range(1, scenarios + 1)]
 
     x = np.arange(scenarios)  # positions for groups
-    width = 1/(len(encryption_methods) + 1)  # width of each bar
+    width = 1 / (len(encryption_methods) + 1)  # width of each bar
 
     # Create plot
     fig, ax = plt.subplots(figsize=(10, 6))
 
     # Plot each method
     for i in range(len(encryption_methods)):
+        label = "Masked ASCON" if encryption_methods[i] == "masked_ASCON" else encryption_methods[i]
+            
         ax.bar(x + i * width,
                means[i],
                width,
                yerr=stds[i],
-               label=encryption_methods[i],
+               label=label,
                capsize=5)
 
     # Labels and ticks

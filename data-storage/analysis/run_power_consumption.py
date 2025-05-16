@@ -317,7 +317,7 @@ def process_encryption_method(encryption_method, path, traces):
         h.calulate_energy(segmented) # Watt to energy
         # compute currents (numpy‐based, no extra DataFrame copies)
         stats = h.calculate_segments(segmented) #Segment the data into highs and lows
-        
+
 
         high_periods = h.summarize_high_intervals(segmented,
                                                 value_col='energy[mJ]',
@@ -362,14 +362,14 @@ def process_encryption_method(encryption_method, path, traces):
         table[col[:-3]+"power [mW]"] = table[col].apply(
             lambda t: f"{t[0] * 1000:.3f} ± {t[1] * 1000:.3f}")
         table.drop(columns=[col], inplace=True)
-    
+
     table["High period energy consumption [mJ]"] = table[
         "High period energy consumption [mJ]"].apply(
             lambda t: f"{t[0]:.3f} ± {t[1]:.3f}")
-    
+
     table["High durations [s]"] = table["High durations [s]"].apply(
             lambda t: f"{t[0]:.2f} ± {t[1]:.2f}")
-    
+
     table[f"First {early_window_ms}ms [mJ]"] = table[f"First {early_window_ms}ms [mJ]"].apply(
             lambda t: f"{t[0]:.3f} ± {t[1]:.3f}")
 
@@ -392,10 +392,10 @@ if __name__ == "__main__":
     data_path = "../results/energy_consumption/"
 
     encryption_methods = {
-        "ascon": (ascon_traces, "ascon1-6:8-12"),
-        "none": (none_traces, "none1-11"),
-        "aes-gcm": (aes_gcm_traces, "aes-gcm1-12"),
-        "masked-ascon": (masked_ascon_traces, "masked-ascon2:7-9:12")
+        "NONE": (none_traces, "none1-11"),
+        "AES-GCM": (aes_gcm_traces, "aes-gcm1-12"),
+        "ASCON": (ascon_traces, "ascon1-6:8-12"),
+        # "masked_ASCON": (masked_ascon_traces, "masked-ascon2:7-9:12")
     }
 
     for encryption_method, (traces, path) in encryption_methods.items():
