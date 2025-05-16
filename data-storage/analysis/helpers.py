@@ -6,9 +6,9 @@ from typing import Dict, List
 from scipy.signal import decimate
 from scipy.ndimage import binary_closing
 
-encryption_methods = ["ASCON", "masked_ASCON", "AES-GCM", "NONE"]
+encryption_methods = ["NONE",  "AES-GCM", "ASCON", "masked_ASCON"]
 scenarios = 12
-metrics = ["RTT", "S_PROC", "R_PROC", "DS_PROC", "DS_ENC", "DS_DEC","GW_US_PROC", "GW_DS_PROC", "ENC", "DEC", "HW_and_Network", "%_of_RTT"]
+metrics = ["RTT", "S_PROC", "R_PROC", "DS_PROC", "DS_ENC", "DS_DEC","GW_US_PROC", "GW_DS_PROC", "ENC", "DEC", "HW_and_Network", "percent_of_RTT", "DS_encryption_time_of_RTT", "S_encryption_time_of_RTT","NTNU_network_time", "BLE_transmission_time"]
 LABEL_ALIASES = {
     "RTT":         "Round‑Trip Time",
     "S_PROC":      "Sensor Sending Processing Time",
@@ -21,7 +21,11 @@ LABEL_ALIASES = {
     "ENC":         "Sensor Encryption Time",
     "DEC":         "Sensor Decryption Time",
     "HW_and_Network": "Hardware and Network Time",
-    "%_of_RTT":    "Hardware and network time as % of RTT"
+    "percent_of_RTT":    "Hardware and network time as % of RTT",
+    "DS_encryption_time_of_RTT": "Data Storage Encryption and decryption time as % of RTT",
+    "S_encryption_time_of_RTT": "Sensor Encryption and decryption time as % of RTT",
+    "NTNU_network_time": "Gatway to data storage to gateway Time",
+    "BLE_transmission_time": "Total BLE transmission Time per round-trip",
 }
 
 def remove_invalid_rows(df, prefix):
@@ -79,10 +83,25 @@ def remove_invalid_rows(df, prefix):
     return df_clean[~invalid_rows]
 
 
+def round_to_ms(df, col):
+    if col.startswith("DS_"):
+        td = pd.to_timedelta(df[col].astype('int64'), unit='ns')
+        # This yields a float in ms, preserving fractions
+        df[col] = td / pd.Timedelta(milliseconds=1)
+    else:
+        td = pd.to_timedelta(df[col].astype('int64'), unit='us')
+        # This yields a float in ms, preserving fractions
+        df[col] = td / pd.Timedelta(milliseconds=1)
+
+    return df
 
 
 def load_and_merge_logs(folder_path):
-    filenames = ["ENC.csv", "DEC.csv", "DS_ENC.csv", "DS_DEC.csv", "RTT.csv", "S_PROC.csv", "R_PROC.csv", "DS_PROC.csv", "GW_US_PROC.csv", "GW_DS_PROC.csv"]
+    filenames = [
+        "ENC.csv", "DEC.csv", "DS_ENC.csv", "DS_DEC.csv", "RTT.csv",
+        "S_PROC.csv", "R_PROC.csv", "DS_PROC.csv", "GW_US_PROC.csv",
+        "GW_DS_PROC.csv"
+    ]
     merged_df = None
 
     for fname in filenames:
@@ -91,8 +110,8 @@ def load_and_merge_logs(folder_path):
             df = pd.read_csv(full_path)
             df = df.drop(columns=["Seq_Num"], errors="ignore")
             prefix = fname.split(".")[0]
-            if prefix in ["DS_ENC", "DS_DEC"] and "NONE_scen" in folder_path:
-                # Skip DS_ENC and DS_DEC for NONE scenarios
+            if prefix in ["DS_ENC", "DS_DEC", "ENC", "DEC"] and "NONE_scen" in folder_path:
+                # Skip for NONE scenarios
                 continue
             df = df.rename(
                 columns={col: f"{prefix}_{col}"
@@ -100,28 +119,47 @@ def load_and_merge_logs(folder_path):
 
             merged_df = df if merged_df is None else pd.concat([merged_df, df],
                                                                axis=1)
-    
+
     merged_df = remove_invalid_rows(merged_df, folder_path)
-    
+
     if merged_df is None:
         print(f"No files found in {folder_path}.")
         return None
-    
+
+    # gw to data storage to gw
+    if "GW_US_PROC_End_Time" in merged_df.columns and "GW_DS_PROC_Start_Time" in merged_df.columns:
+        merged_df["NTNU_network_time_Delta"] = merged_df[
+            "GW_DS_PROC_Start_Time"] - merged_df["GW_US_PROC_End_Time"]
+        merged_df = round_to_ms(merged_df, "NTNU_network_time_Delta")
+
+    # BLE transfoer time
+    if "GW_US_PROC_Start_Time" in merged_df.columns and "GW_DS_PROC_End_Time" in merged_df.columns:
+        merged_df["BLE_transmission_time_Delta"] = merged_df[
+            "GW_DS_PROC_End_Time"] - merged_df["GW_US_PROC_Start_Time"]
+        merged_df = round_to_ms(merged_df, "BLE_transmission_time_Delta")
+
     # Convert timestamps to deltas
-    for prefix in ["RTT", "S_PROC", "R_PROC", "DS_PROC", "DS_ENC", "DS_DEC","GW_US_PROC", "GW_DS_PROC", "ENC", "DEC"]:
+    for prefix in [
+            "RTT", "S_PROC", "R_PROC", "DS_PROC", "DS_ENC", "DS_DEC",
+            "GW_US_PROC", "GW_DS_PROC", "ENC", "DEC"
+    ]:
         start_col = f"{prefix}_Start_Time"
         end_col = f"{prefix}_End_Time"
         if start_col in merged_df.columns and end_col in merged_df.columns:
-            merged_df[f"{prefix}_Delta"] = merged_df[end_col] - merged_df[
-                start_col]
+            merged_df[
+                f"{prefix}_Delta"] = merged_df[end_col] - merged_df[start_col]
             merged_df.drop(columns=[start_col, end_col], inplace=True)
-            if prefix.startswith("DS_"):
-                merged_df[f"{prefix}_Delta"] = (
-                    merged_df[f"{prefix}_Delta"] /
-                    1000).round().astype(int)
+            merged_df = round_to_ms(merged_df, f"{prefix}_Delta")
+
+    if "BLE_transmission_time_Delta" in merged_df.columns and "S_PROC_Delta" in merged_df.columns and "R_PROC_Delta" in merged_df.columns and "RTT_Delta" in merged_df.columns:
+        merged_df["BLE_transmission_time_Delta"] = merged_df[
+            "RTT_Delta"] - merged_df["BLE_transmission_time_Delta"] - merged_df[
+                "S_PROC_Delta"] - merged_df["R_PROC_Delta"]
+
+    if "NTNU_network_time_Delta" in merged_df.columns and "DS_PROC_Delta" in merged_df.columns:
+        merged_df["NTNU_network_time_Delta"] -= merged_df["DS_PROC_Delta"]
 
     return merged_df
-
 
 def load_multiple_logs(data_path, encryption_methods, count):
     return {
@@ -157,7 +195,29 @@ def get_stats(frames: dict, scen: int, category= "RTT"):
             stats[f"Std_{category}"].append(frame[f"{category}_Delta"].std())
     return pd.DataFrame(stats)
 
+def add_hw_and_networking_time(frames):
+    for encryption_method in encryption_methods:
+        for i in range(0, scenarios):
+            try:
+                frames[encryption_method][i]["HW_and_Network_Delta"] = frames[encryption_method][i]["RTT_Delta"] - frames[encryption_method][i]["S_PROC_Delta"]- frames[encryption_method][i]["R_PROC_Delta"] - frames[encryption_method][i]["GW_DS_PROC_Delta"] - frames[encryption_method][i]["GW_US_PROC_Delta"] - frames[encryption_method][i]["DS_PROC_Delta"]
+                frames[encryption_method][i]["percent_of_RTT_Delta"] = frames[encryption_method][i]["HW_and_Network_Delta"] / frames[encryption_method][i]["RTT_Delta"]*100
+            except Exception as e:
+                if frames[encryption_method][i] is not None:
+                    frames[encryption_method][i]["HW_and_Network_Delta"] = 0
 
+def add_encyprion_time_of_RTT(frames):
+    for encryption_method in encryption_methods:
+        for i in range(0, scenarios):
+            try:
+                frames[encryption_method][i]["DS_crypto_time_Delta"] = frames[encryption_method][i]["DS_ENC_Delta"] + frames[encryption_method][i]["DS_DEC_Delta"]
+                frames[encryption_method][i]["DS_encryption_time_of_RTT_Delta"] = frames[encryption_method][i]["DS_crypto_time_Delta"] / frames[encryption_method][i]["RTT_Delta"]*100
+                frames[encryption_method][i]["S_crypto_time_Delta"] = frames[encryption_method][i]["ENC_Delta"] + frames[encryption_method][i]["DEC_Delta"]
+                frames[encryption_method][i]["S_encryption_time_of_RTT_Delta"] = frames[encryption_method][i]["S_crypto_time_Delta"] / frames[encryption_method][i]["RTT_Delta"]*100
+            except Exception as e:
+                print(e)
+                if frames[encryption_method][i] is not None:
+                    frames[encryption_method][i]["DS_encryption_time_of_RTT_Delta"] = 0
+                    frames[encryption_method][i]["S_encryption_time_of_RTT_Delta"] = 0
 
 def get_encryption_stats(frames: dict, encryption_method: str, category= "RTT") -> pd.DataFrame:
     stats: Dict[str, List[float]] = {f"Mean_{category}": [], f"Std_{category}": []}
@@ -171,10 +231,7 @@ def get_encryption_stats(frames: dict, encryption_method: str, category= "RTT") 
             stats[f"Std_{category}"].append(frame[f"{category}_Delta"].std())
     return pd.DataFrame(stats)
 
-def plot_bar_results(frames, metric, scenarios=12):
-
-    scens = [f"scen_{i}" for i in range(1, scenarios + 1)]
-
+def get_means(metric, frames):
     means = []
     stds = []
 
@@ -182,25 +239,71 @@ def plot_bar_results(frames, metric, scenarios=12):
         frame = get_encryption_stats(frames, encryption_method, metric)
         means.append(frame[f"Mean_{metric}"].values)
         stds.append(frame[f"Std_{metric}"].values)
+    return means, stds
+
+def store_means(metric, frames, encryption_methods, output_csv):
+    """
+    Build a table of mean±std for each scenario (rows) and encryption method (columns)
+    for the given metric, then save it to CSV.
+
+    Parameters:
+    - metric: string, e.g. "RTT"
+    - frames: dict of {encryption_method: list of DataFrames per scenario}
+    - encryption_methods: list of method names in order
+    - output_csv: path to write the CSV file
+    """
+    # Determine number of scenarios from any one entry
+    scenarios = len(next(iter(frames.values())))
+    index = [f"scen_{i}" for i in range(1, scenarios + 1)]
+    table = pd.DataFrame(index=index, columns=encryption_methods)
+
+    colname = f"{metric}_Delta"
+    for method in encryption_methods:
+        dfs = frames.get(method, [])
+        for i, df in enumerate(dfs, 1):
+            if df is None or colname not in df.columns:
+                table.at[f"scen_{i}", method] = ""
+            else:
+                m = df[colname].mean()
+                s = df[colname].std()
+                table.at[f"scen_{i}", method] = f"{m:.3f} ± {s:.3f}"
+
+    # Write out
+    table.to_csv(output_csv)
+
+    return table
+
+
+def plot_bar_results(means, stds, metric, scenarios=12):
+
+    scens = [f"Scen {i}" for i in range(1, scenarios + 1)]
 
     x = np.arange(scenarios)  # positions for groups
-    width = 1/(len(encryption_methods) + 1)  # width of each bar
+    width = 1 / (len(encryption_methods) + 1)  # width of each bar
 
     # Create plot
     fig, ax = plt.subplots(figsize=(10, 6))
 
     # Plot each method
     for i in range(len(encryption_methods)):
+        label = "Masked ASCON" if encryption_methods[i] == "masked_ASCON" else encryption_methods[i]
+            
         ax.bar(x + i * width,
                means[i],
                width,
                yerr=stds[i],
-               label=encryption_methods[i],
+               label=label,
                capsize=5)
 
     # Labels and ticks
     ax.set_xlabel("Scenario")
-    ax.set_ylabel("t [ms]")
+    if metric == "percent_of_RTT":
+        ax.set_ylabel("% of RTT")
+        ax.set_ylim(90, 100)
+    elif metric == "encryption_time_of_RTT":
+        ax.set_ylabel("% of RTT")
+    else:
+        ax.set_ylabel("t [ms]")
     ax.set_title(f"Mean {LABEL_ALIASES.get(metric)} per Scenario")
     ax.set_xticks(x + width)
     ax.set_xticklabels(scens)
@@ -211,106 +314,203 @@ def plot_bar_results(frames, metric, scenarios=12):
     return fig
 
 
-def save_figure(frames, path):
+def analyse_execution_times(frames, path):
     """
     Save the given figure to a file.
     """
     for metric in metrics:
-        fig = plot_bar_results(frames, metric)
-        fig.savefig(os.path.join(path, metric), bbox_inches='tight')
+        means, stds = get_means(metric, frames)
+        store_means(metric, frames, encryption_methods, os.path.join(path, "results", "execution_times", f"{metric}.csv"))
+        fig = plot_bar_results(means, stds, metric)
+        fig.savefig(os.path.join(path,"figures", "means_bar_plot" ,metric), bbox_inches='tight')
         print(f"Saved {metric}")
 
 
-def read_data(path):
+def read_data(path, downsample=2):
     df = pd.read_csv(
         path,
-        engine="pyarrow",               # still OK in pandas ≥2.0
-        usecols=["Value", "Timestamp"], # limit to those two columns
-        dtype={"Value": "float32"},     # optional speed/memory tweak
+        engine="pyarrow",
+        usecols=["Value", "Timestamp"],
+        dtype={"Value": "float32"},
     )
     return df
 
-def plot_scenarios(dfs, ylim=(0.03, 0.075)):
-       fig, axes = plt.subplots(3, 4, figsize=(15, 12))
 
-       for idx, ax in enumerate(axes.flatten()): 
-              df = dfs[idx].iloc[::4]
-              ax.plot(df['Timestamp'], df['Value'], linewidth = 0.2)
-              ax.set_title(f"Scenario {idx+1}")
-              ax.set_xlabel("Time (s)")
-              ax.set_ylabel("Current (A)")
-              ax.set_ylim(ylim)
+def mark_initial_high_window(df, state_col='state',
+                             fs=4000,
+                             window_ms=30,
+                             new_col='is_initial_high_30ms'):
+    """
+    Given df[state_col] with 'high'/'low', mark True for the first `window_ms` 
+    of each high period.
+    """
+    mask = df[state_col] == 'high'
+    # identify runs
+    run_id = (mask != mask.shift(fill_value=False)).cumsum()
+    # allocate
+    result = pd.Series(False, index=df.index, name=new_col)
 
-       plt.tight_layout()
-       plt.show()
+    # how many samples in 350 ms?
+    n_win = int(window_ms * fs / 1000)
 
+    # only iterate runs that actually are 'high'
+    for run in np.unique(run_id[mask]):
+        idxs = np.nonzero(run_id == run)[0]
+        # pick the first n_win samples of this run
+        head = idxs[:n_win]
+        result.iloc[head] = True
+
+    return result
 
 def fast_segment(df, value_col="Value", fs=4000,
-                 target_fs=100,     # decimate to 50 Hz
-                 smooth_s=0.5,     # 0.5 s window @50 Hz → 25 samples
-                 thresh=0.035,        # pick your threshold on the smoothed decimated signal
-                 min_gap_s=0.1     # close gaps shorter than 0.1 s @50 Hz → 5 samples
+                 target_fs=100,
+                 smooth_s=0.5,
+                 thresh=0.035,
+                 min_gap_s=0.1,
+                 early_window_ms = 30
                 ):
     sig = df[value_col].values.astype(float)
 
     # 1) decimate
-    q = int(fs/target_fs)
+    q = max(1, int(fs/target_fs))
     sig_dec = decimate(sig, q, ftype="fir", zero_phase=True)
 
-    # 2) smooth with convolution (fast)
-    win = int(smooth_s * target_fs)
+    # 2) smooth
+    win = max(1, int(smooth_s * target_fs))
     kernel = np.ones(win)/win
     roll_dec = np.convolve(sig_dec, kernel, mode="same")
 
-    # 3) threshold
+    # 3) threshold + 4) close gaps
     mask_dec = roll_dec > thresh
-
-    # 4) close tiny gaps
-    gap = int(min_gap_s * target_fs)
+    gap = max(1, int(min_gap_s * target_fs))
     mask_dec = binary_closing(mask_dec, structure=np.ones(gap))
 
-    # 5) upsample mask back to fs
+    # 5) upsample back
     mask_full = np.repeat(mask_dec, q)[:len(sig)]
 
-    # 6) add to DataFrame
+    # 6) assign states
     df["state"] = np.where(mask_full, "high", "low")
+
+    # 7) mark the first early_window_ms ms of each high period
+    df["is_initial_high"] = mark_initial_high_window(
+        df, state_col="state", fs=fs, window_ms=early_window_ms
+    )
+
     return df
 
 
-def plot_segmented(df, fs=4000):
-    plot_df = df.iloc[::4]  # downsample for plotting
+def summarize_high_intervals(
+    df,
+    value_col='Value',
+    state_col='state',
+    time_col='Timestamp',
+    init_col='is_initial_high',
+    early_window_ms=30,
+):
+
+    # 1) Mask & run-id for high periods
+    mask   = df[state_col] == 'high'
+    run_id = (mask != mask.shift(fill_value=False)).cumsum()
+
+    # 2) Slice only the high rows, annotate run
+    high = df.loc[mask, [time_col, value_col, init_col]].copy()
+    high['run'] = run_id[mask]
+
+    # 3) Aggregate the full-period stats
+    agg = high.groupby('run').agg(
+        start_time=pd.NamedAgg(column=time_col,  aggfunc='first'),
+        end_time  =pd.NamedAgg(column=time_col,  aggfunc='last'),
+        sum_value =pd.NamedAgg(column=value_col, aggfunc='sum'),
+        mean_value=pd.NamedAgg(column=value_col, aggfunc='mean'),
+        std_value =pd.NamedAgg(column=value_col, aggfunc='std'),
+    )
+
+    # 4) Compute the initial_Xms_sum and std
+    init = high[high[init_col]].groupby('run')[value_col]
+    init_sum = init.sum().rename(f'initial_{early_window_ms}ms_sum')
+    init_std = init.std().rename(f'finitial_{early_window_ms}ms_std')
+    agg = agg.join(init_sum).join(init_std).fillna({
+        f'initial_{early_window_ms}ms_sum': 0.0,
+        f'initial_{early_window_ms}ms_std': 0.0
+    })
+
+    # 5) Duration
+    agg['duration_s'] = agg['end_time'] - agg['start_time']
+
+    # clean up
+    del high, mask
+    gc.collect()
+
+    return agg.reset_index(drop=True)
+
+
+
+def calulate_energy(segmented):
+    segmented["energy[mJ]"] = segmented["Value"]/4000*1e3
+
+
+
+def plot_segmented(df,
+                   fs=4000,
+                   ylim=(0.03, 0.075),
+                   xlim=None,
+                   downsample=None):
+    """
+    Plot segmented data with optional slicing in seconds.
+
+    Parameters:
+    - df: DataFrame containing 'Timestamp', 'Value', and 'state' columns.
+    - fs: Sampling frequency (default: 4000 Hz).
+    - ylim: Tuple specifying y-axis limits (default: (0.03, 0.075)).
+    - start: Start time in seconds for slicing (default: None).
+    - end: End time in seconds for slicing (default: None).
+    """
+    fig, ax = plt.subplots(figsize=(20, 5))
+
+    if xlim is not None:
+        start_idx = int(xlim[0] * fs)
+        end_idx = int(xlim[1] * fs)
+        df = df.iloc[start_idx:end_idx]
+        ax.set_xlim(xlim)
+
+    if downsample is not None:
+        plot_df = df.iloc[::downsample]  # downsample for plotting
+    else:
+        plot_df = df
     times = plot_df['Timestamp'].values
-    vals  = plot_df['Value'].values
+    vals = plot_df['Value'].values
 
     # build two arrays that are NaN whenever they’re not in that state
-    high_vals = np.where(plot_df['state']=='high', vals, np.nan)
-    low_vals = np.where(plot_df['state']=='low',  vals, np.nan)
-
-    fig, ax = plt.subplots(figsize=(40,5))
+    high_vals = np.where(plot_df['state'] == 'high', vals, np.nan)
+    low_vals = np.where(plot_df['state'] == 'low', vals, np.nan)
 
     # plot each as a continuous line but with NaNs breaking the segments
-    ax.plot(times, low_vals,  '-', linewidth=0.5, color='blue', label='Low')
-    ax.plot(times, high_vals, '-', linewidth=0.5, color='red',  label='High')
+    ax.plot(times, low_vals, '-', linewidth=0.5, color='blue', label='Low')
+    ax.plot(times, high_vals, '-', linewidth=0.5, color='red', label='High')
 
     ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Current (mA)")
-    ax.set_title("Power Usage Segmentation")
-    ax.set_ylim(0.030, 0.075)
+    ax.set_ylabel("Power (mW)")
+    ax.set_title("Power Usage Breakdown")
+    if ylim is not None:
+        ax.set_ylim(ylim)
     ax.legend(loc='upper right')
     ax.grid()
+    ax.set_xlabel(ax.get_xlabel(), fontsize=14)
+    ax.set_ylabel(ax.get_ylabel(), fontsize=14)
+    ax.title.set_fontsize(16)
     plt.tight_layout()
-    plt.show()
+    return fig, ax
 
 
-def calculate_currents(segmented_df):
+def calculate_segments(segmented_df):
     """
     Given a df with columns:
       - 'Value' : float array of currents
       - 'state' : 'high' or 'low' labels per sample
     Compute:
-      • high_mean_current  & std
-      • low_mean_current   & std
-      • overall mean_current & std
+      • high_mean  & std
+      • low_mean   & std
+      • overall meant & std
     Returns a dict of (mean, std) tuples.
     """
     # pull out the raw values
@@ -322,43 +522,7 @@ def calculate_currents(segmented_df):
     low  = vals[~mask_high]
 
     return {
-        'high_mean_current': (high.mean(),       high.std()),
-        'low_mean_current':  (low.mean(),        low.std()),
-        'mean_current':      (vals.mean(),       vals.std())
+        'high_mean': (high.mean(),       high.std()),
+        'low_mean':  (low.mean(),        low.std()),
+        'mean':      (vals.mean(),       vals.std())
     }
-
-
-
-
-def make_currents_table(dfs, fs = 4000):
-    smooth_s    = 0.03
-    thresh = 0.037
-    min_gap_s   = 0.5
-    # Segment all scenarios
-
-    for i in range(12):
-        print(i)
-        segmented = fast_segment(
-            df=dfs[i],
-            value_col='Value',
-            fs=fs,
-            smooth_s=smooth_s,
-            thresh=thresh,
-            min_gap_s=min_gap_s
-        )
-        dfs[i] = segmented
-
-    rows = []
-    for i, df in enumerate(dfs, start=1):
-        stats = calculate_currents(df)
-        rows.append({
-            'Scenario': f'scen_{i}',
-            'High (mA)': f"{stats['high_mean_current'][0]:.6f} ± {stats['high_mean_current'][1]:.6f}",
-            'Low (mA)':  f"{stats['low_mean_current'][0]:.6f} ± {stats['low_mean_current'][1]:.6f}",
-            'All (mA)':  f"{stats['mean_current'][0]:.6f} ± {stats['mean_current'][1]:.6f}",
-        })
-
-    table = pd.DataFrame(rows).set_index('Scenario')
-
-    print(table.to_markdown())
-    return table
