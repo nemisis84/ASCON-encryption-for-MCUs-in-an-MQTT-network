@@ -322,8 +322,7 @@ void send_next_chunk() {
             send_struct_data(sending_processing_times, max_packets * sizeof(data_entry), "S_PROC", TRANSFER_S_PROC);
         } else {
             if (current_scenario < 12) {
-                // current_scenario++;
-                current_scenario = 8;
+                current_scenario++;
 
                 sleep_ms(10000);  // Distinguish in power trace
                 configure_scenario(current_scenario);
