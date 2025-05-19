@@ -312,9 +312,8 @@ def restructure_dfs(dfs, out_path):
     """
 
     cols = dfs["ASCON"].columns
-    print(cols)
     index = dfs["ASCON"].index
-    for col in cols[1::]:
+    for col in cols:
         result = {}
         for encryption_method in dfs.keys():
             if col == "All periods power [mW]":

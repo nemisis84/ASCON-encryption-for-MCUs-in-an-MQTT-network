@@ -3,6 +3,7 @@
 *.pyo
 *.pyd
 *__pycache__/
+*.toml
 
 # Ignore virtual environments
 venv/
@@ -19,4 +20,3 @@ build/
 .vscode/
 .idea/
 results/
-figures/

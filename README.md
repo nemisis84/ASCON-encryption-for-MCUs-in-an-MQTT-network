@@ -1,57 +1,58 @@
 # ASCON-encryption-for-MCUs-in-an-MQTT-network
 Source code for TTM4905 Master thesis spring 2025. The project implements end-to-end encryption for MCUs in an MQTT 5.0 network. The encryption is done using the NIST LWC winner ASCON, which provides AEAD. 
 
+## Project Structure
 
-## Install guide sensor-MCU
+### [Sensor](sensor/README.md)
+The sensor component is responsible for collecting data and encrypting it using ASCON before transmitting it to the gateway via BLE. It is implemented on an Raspberry Pi Pico. 
 
-This guide is based on https://datasheets.raspberrypi.com/pico/getting-started-with-pico.pdf getting started guide with VS code. 
+- **Key Features**:
+  - ASCON encryption for secure data transmission.
+  - BLE communication with the gateway.
+  - Configurable experiment settings.
 
-1. Go to extensions and download the extension Raspberry Pi Pico
-2. A new icon should appear in the VS code left sidebar. Select the new Raspberry Pi Pico icon.
-3. To create a new project, press New C/C++ Project or import project. Select your settings to fit your setup.
-4. Make sure that VS code is opened with the project as root folder. In the left side bar, press **Compile project**.
-5. Plug in your Raspberry Pi Pico while pressing the Bootsel button. This will make the device ready to be flashed. Make sure the device appears on your machine. 
-6. Open file explorer or use the command line and find the .uf2 file in the /build folder. Copy the .uf2 file to the Raspberry Pi. This will flash and boot the Pico.
-7. The program will now run whenever the device is powered. Press BOOTSEL and plug the USB to your laptop to replace the program. 
+Go to the [Sensor README](sensor/README.md) for installation and usage instructions.
 
+---
 
-#### Command line
-```
-export PICO_SDK_PATH=$(pwd)/pico-sdk
-```
+### [Gateway](gateway/gateway_app/README.md)
+The gateway acts as a bridge between the sensor and the MQTT broker. It receives encrypted data from the sensor via BLE, decrypts it, and forwards it to the MQTT broker.
 
+- **Key Features**:
+  - BLE GATT client for communication with sensors.
+  - Wi-Fi Enterprice connection
+  - MQTT 5.0 client for broker communication.
 
-```
-rm -rf build/*
-cd build
-cmake ..
-make -j$(nproc)
-```
+Go to the [Gateway README](gateway/gateway_app/README.md) for setup and configuration details.
 
+---
 
+### [Data Analysis](Data%20analysis/README.md)
+This folder contains scripts and tools for analyzing the data collected from the MQTT broker. It includes performance metrics such as energy consumption, execution times, and average power consumption.
 
-### Debugging
+- **Key Features**:
+  - Visualization of encryption performance.
+  - Analysis of energy and power consumption.
+  - Generation of figures for the thesis.
 
-The easiest way to debug the Pico is to send print statements back to the computer. https://datasheets.raspberrypi.com/pico/getting-started-with-pico.pdf also explains how a debug probe can be used. However, This guide only concerns debugging with printf().
+Go to the [Data Analysis README](Data%20analysis/README.md) for more information.
 
+---
 
-1. In the source code, include: stdio_init_all();. This will allow us to use the serial port of the USB cable. 
-2. Add your printf() statements in the code. 
-3. Flash the device and open device manager.
-4. Look for Seriel USB-device (COMX).
-5. Dowload a program that can print serial output such as the ARDUINO IDE.
-6. Select the correct COMX output and open the serial monitor. 
+### [Data Storage](data-storage/README.md)
+This component handles the storage and management of data collected from the MQTT broker. It includes scripts for processing and storing results in a structured format.
 
-## Install guide gateway
+- **Key Features**:
+  - MQTT client reciving and transmitting data back to the sensor.
+  - Encryption and decryption.
+  - Python environment setup (for Data analysis and data storage code).
 
-Install packages needed
-```
-sudo apt-get install git wget flex bison gperf python3 python3-pip python3-venv cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0
-```
+Go to the [Data Storage README](data-storage/README.md) for setup instructions.
 
+## Disclaimer
 
-### misc
+This project is a research prototype and is not intended for production use. The authors take no responsibility for any issues, damages, or losses that may arise from using this code. Significant performance, security, automation and scalebility improvements must be implemented before a production state is achieved. 
 
-```
-source ~/.bashrc
-```
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

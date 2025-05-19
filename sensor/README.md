@@ -1,6 +1,6 @@
 # Sensor
 
-This folder contains the source code for the sensor device in the project. The target device is a Raspberry Pi Pico W. It has been built for testing. By default it runs 12 experiments with different payloads and transmission intervals with a given encryption algorithm. Server.c is the main file, and initilises the devices. Server_common contains all the essential logic for connection with BLE, sending, reciving and crypto operation. 
+This folder contains the source code for the sensor device in the project. The target device is a Raspberry Pi Pico W. It has been built for testing. By default it runs 12 experiments with different payloads and transmission intervals with a given encryption algorithm. Server.c is the main file, and initilises the devices. Server_common contains all the essential logic for connection with BLE, sending, reciving and crypto operation. CMAKELISTS.txt holds the instructions for building the project. In this file you should also define the encryption method on line 33.
 
 
 ## Install guide sensor-MCU
