@@ -1,0 +1,38 @@
+{
+    "C_Cpp.intelliSenseEngine": "default",
+    "idf.espIdfPathWin": "C:\\Users\\super\\esp\\v5.4\\esp-idf",
+    "idf.toolsPathWin": "C:\\Users\\super\\.espressif",
+    "idf.pythonInstallPath": "C:\\Users\\super\\.espressif\\tools\\idf-python\\3.11.2\\python.exe",
+    "files.associations": {
+        "gatt_client.h": "c",
+        "mqtt5c.h": "c",
+        "freertos.h": "c",
+        "wifi_enterprise.h": "c",
+        "esp_mac.h": "c",
+        "esp_netif.h": "c",
+        "task.h": "c",
+        "nvs_flash.h": "c",
+        "esp_gattc_api.h": "c",
+        "esp_gap_ble_api.h": "c",
+        "esp_gatt_common_api.h": "c",
+        "esp_bt_main.h": "c",
+        "stdio.h": "c",
+        "mqtt_client.h": "c",
+        "esp_transport.h": "c",
+        "esp_log.h": "c",
+        "protocol_examples_common.h": "c",
+        "array": "c",
+        "string": "c",
+        "string_view": "c",
+        "span": "c",
+        "cstdint": "c"
+    },
+    "idf.flashType": "UART",
+    "idf.portWin": "COM7",
+    "idf.customExtraVars": {
+        "IDF_TARGET": "esp32c3"
+    },
+    "idf.openOcdConfigs": [
+        "board/esp32c3-ftdi.cfg"
+    ]
+}
