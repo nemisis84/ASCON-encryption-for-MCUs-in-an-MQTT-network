@@ -12,6 +12,7 @@ This folder contains the source code and configuration for the gateway device in
 
 - THe device needs to be reset if the BLE connection is disconnected. No automatic reconnection is implemented. 
 - The Wi-Fi password is currently hardcoded into the sdkconfig file. This is an UNSECURE way of storing the password, and it should be flashed to the device another way. Make sure that you don't push your secrets to github (file is currently under .gitignore). 
+- The certificates in main/ is free to use. However, make sure that your own generated secret certificates is pushed to github. The public and private keys used in my project is the default ones from the ESP-IDF repo and is thus not secret. 
 
 ## Install Guide
 
