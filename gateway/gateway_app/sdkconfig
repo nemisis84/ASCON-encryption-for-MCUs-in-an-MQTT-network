@@ -465,7 +465,7 @@ CONFIG_PARTITION_TABLE_MD5=y
 #
 # MQTT Configuration
 #
-CONFIG_BROKER_URL="mqtt://mqtt20.iik.ntnu.no"
+CONFIG_BROKER_URL="mqtt://your_broker.com"
 # end of MQTT Configuration
 
 #
