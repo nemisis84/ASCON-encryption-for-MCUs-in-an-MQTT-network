@@ -312,7 +312,6 @@ def restructure_dfs(dfs, out_path):
     """
 
     cols = dfs["ASCON"].columns
-    print(cols)
     index = dfs["ASCON"].index
     for col in cols[1::]:
         result = {}
