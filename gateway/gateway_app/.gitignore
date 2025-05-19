@@ -1,0 +1,5 @@
+build/
+sdkconfig
+main/*.pem
+main/*.crt
+main/*.key
