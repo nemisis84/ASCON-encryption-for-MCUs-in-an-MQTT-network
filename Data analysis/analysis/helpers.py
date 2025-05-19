@@ -582,3 +582,37 @@ def calculate_segments(segmented_df):
         'low_mean': (low.mean(), low.std()),
         'mean': (vals.mean(), vals.std())
     }
+
+
+def plot_energy_results(means, stds, x_label, y_label, title, scenarios=(1,12)):
+    """
+    Plot the means and stds for the given metric for each encryption method.
+    """
+    scens = [f"Scen {i}" for i in range(scenarios[0], scenarios[1] + 1)]
+
+    x = np.arange(scenarios[1]-scenarios[0]+1)  # positions for groups
+    width = 1 / (len(encryption_methods) + 1)  # width of each bar
+
+    # Create plot
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Plot each method
+    for i in range(len(encryption_methods)):
+        ax.bar(x + i * width,
+               means[i],
+               width,
+               yerr=stds[i],
+               label=encryption_methods[i],
+               capsize=5)
+
+    # Labels and ticks
+    ax.set_xlabel(x_label)
+    ax.set_ylabel(y_label)
+    ax.set_title(title)
+    ax.set_xticks(x + width)
+    ax.set_xticklabels(scens)
+    ax.legend()
+
+    plt.tight_layout()
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    return fig, ax

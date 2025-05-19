@@ -11,6 +11,7 @@ def get_intervals(df, start_time, end_time, fs=4000):
     return df.iloc[start_time:end_time].reset_index(drop=True)
 
 def ascon_traces(orig_df):
+    """Hardcoded intervals for the ASCON traces"""
 
     # Scen 1
     start_time = 8
@@ -80,6 +81,8 @@ def ascon_traces(orig_df):
 
 
 def masked_ascon_traces(orig_df):
+    """Hardcoded intervals for the ASCON traces"""
+
     # Scen 1
     path = os.path.join("..", "energy_consumption", "masked_ascon1_and_8", "Main power - Arc.csv")
     df1_8 = h.read_data(path)
@@ -139,6 +142,8 @@ def masked_ascon_traces(orig_df):
 
 
 def aes_gcm_traces(orig_df):
+    """Hardcoded intervals for the AES-GCM traces"""
+
     # Scen 1
     start_time = 14
     end_time = 1*60 + 54
@@ -203,7 +208,9 @@ def aes_gcm_traces(orig_df):
        df5, df6, df7, df8,
        df9, df10, df11, df12]
 
+
 def none_traces(orig_df):
+    """Hardcoded intervals for the NONE traces"""
 
     # Scen 1
     start_time = 14
@@ -261,7 +268,9 @@ def none_traces(orig_df):
     df11 = get_intervals(orig_df, start_time, end_time, fs=fs)
 
     # Scen 12
-    df12 = h.read_data(os.path.join("..", "energy_consumption", "none12", "Main power - Arc.csv"))
+    df12 = h.read_data(
+        os.path.join("..", "energy_consumption", "none12",
+                     "Main power - Arc.csv"))
     start_time = 0 * 60 * 60 + 2 * 60 + 57
     end_time = 1 * 60 * 60 + 41 * 60 + 56
     df12 = get_intervals(df12, start_time, end_time, fs=fs)
@@ -275,6 +284,17 @@ def mask_initial_scenarios_inplace(
     scenario_prefix: str = "scen_",
     na_value: str = "Not applicable"
 ) -> None:
+    """
+    Mask the initial scenarios in a DataFrame in place.
+    This function modifies the DataFrame in place by setting the values of the
+    specified scenarios to a given value (default is "Not applicable").
+    Args:
+        df (pd.DataFrame): The DataFrame to modify.
+        exclude_cols (list): List of columns to exclude from masking.
+        num_scenarios (int): Number of scenarios to mask.
+        scenario_prefix (str): Prefix for scenario index names.
+        na_value (str): Value to set for the masked scenarios.
+    """
 
     # 1) Build list of scenario index names to mask
     rows_to_mask = [f"{scenario_prefix}{i}" for i in range(1, num_scenarios+1)]
@@ -284,30 +304,62 @@ def mask_initial_scenarios_inplace(
     df.loc[rows_to_mask, cols_to_mask] = na_value
 
 
-def restructure_dfs(dfs):
+def restructure_dfs(dfs, out_path):
+    """Restructure the dataframes to have a common format and save them to CSV files.
+    Args:
+        dfs (dict): Dictionary of dataframes to restructure.
+        out_path (str): Path to save the restructured CSV files.
+    """
+
     cols = dfs["ASCON"].columns
-    for col in cols:
+    print(cols)
+    index = dfs["ASCON"].index
+    for col in cols[1::]:
         result = {}
         for encryption_method in dfs.keys():
-            result[encryption_method] = dfs[encryption_method][col]
-        result = pd.DataFrame(result)
+            if col == "All periods power [mW]":
+                result[encryption_method] = dfs[encryption_method][col]
+            else:
+                result[encryption_method] = dfs[encryption_method][col].iloc[
+                    4::]
+
+        if col == "All periods power [mW]":
+            result = pd.DataFrame(result)
+            result.set_index(index, inplace=True)
+        else:
+            result = pd.DataFrame(result)
+            result.set_index(index[4::], inplace=True)
+        # Order the columns
+        result = result.reindex(
+            columns=["NONE", "AES-GCM", "ASCON", "masked_ASCON"])
+        path = os.path.join(out_path, col)
+        result.to_csv(path + ".csv", index=True)
 
 
-def process_encryption_method(encryption_method, path, traces):
+def process_encryption_method(encryption_method, path, traces, early_window_ms=30):
+    """
+    Process the given encryption method traces.
+    Args:
+        encryption_method (str): The name of the encryption method.
+        path (str): The path to the CSV file containing the traces.
+        traces (function): The function to process the traces.
+        early_window_ms (int): The early window in milliseconds.
+    """
+    # 1) Read the data
     print(f"Processing {encryption_method} traces")
     orig_df = h.read_data(path)
 
     dfs = traces(orig_df)
     del orig_df
-    gc.collect()
+    gc.collect() # Free up memory
 
-    # 4) Your fixed parameters
+    # 2) Fixed parameters for the high‐low segmentation
     smooth_s = 0.03
     thresh = 0.120
     min_gap_s = 0.3
     target_fs = 2000
-    early_window_ms = 35
-    # 5) Process one scenario at a time
+
+    # 3) Process one scenario at a time
     rows = []
     for i in range(len(dfs)):
         print(f"Processing scenario {i+1} with df length {len(dfs[i])}")
@@ -362,10 +414,10 @@ def process_encryption_method(encryption_method, path, traces):
         del segmented, stats, high_periods
         gc.collect()
 
-    # 6) Build the final table
+    # 4) Build the final table
     table = pd.DataFrame(rows).set_index('Scenario')
 
-    # Format each cell as “mean ± std”
+    # 5) Format each cell as “mean ± std”
     for col in ['High periods [W]', 'Low periods [W]', 'All periods [W]']:
         table[col[:-3]+"power [mW]"] = table[col].apply(
             lambda t: f"{t[0] * 1000:.3f} ± {t[1] * 1000:.3f}")
@@ -386,15 +438,14 @@ def process_encryption_method(encryption_method, path, traces):
         num_scenarios=4,
         scenario_prefix="scen_"
     )
-    # 7) Write out to CSV
+    # 6) Write out to CSV
     out_path = os.path.join("..",  "avg_power_consumptions",
                             f"power_consumption_{encryption_method}_{early_window_ms}.csv")
     table.to_csv(out_path)
     print(f"Wrote summary to {out_path}")
 
-    # 8) Print to console
     print(table.to_string())
-
+    return table
 
 if __name__ == "__main__":
     data_path = "../energy_consumption/"
@@ -406,6 +457,9 @@ if __name__ == "__main__":
         "masked_ASCON": (masked_ascon_traces, "masked-ascon2:7-9:12")
     }
 
+    dfs = {}
     for encryption_method, (traces, path) in encryption_methods.items():
         path = os.path.join(data_path, path, "Main power - Arc.csv")
-        process_encryption_method(encryption_method, path, traces)
+        dfs[encryption_method] = process_encryption_method(encryption_method, path, traces, early_window_ms = 30)
+
+    restructure_dfs(dfs, os.path.join("..", "avg_power_consumptions", "restructured"))
