@@ -547,16 +547,16 @@ def plot_segmented(df,
     ax.plot(times, low_vals, '-', linewidth=0.5, color='blue', label='Low')
     ax.plot(times, high_vals, '-', linewidth=0.5, color='red', label='High')
 
-    ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Power (mW)")
-    ax.set_title("Power Usage Breakdown")
+    ax.set_xlabel("Time (s)", fontsize=18)
+    ax.set_ylabel("Power (mW)", fontsize=18)
+    ax.set_title("Power Usage", fontsize=24)
     if ylim is not None:
         ax.set_ylim(ylim)
-    ax.legend(loc='upper right')
+    ax.legend(loc='upper right', fontsize=18)
     ax.grid()
-    ax.set_xlabel(ax.get_xlabel(), fontsize=14)
-    ax.set_ylabel(ax.get_ylabel(), fontsize=14)
-    ax.title.set_fontsize(16)
+    # ax.set_xlabel(ax.get_xlabel(), fontsize=18)
+    # ax.set_ylabel(ax.get_ylabel(), fontsize=18)
+    # ax.title.set_fontsize(24)
     plt.tight_layout()
     return fig, ax
 
