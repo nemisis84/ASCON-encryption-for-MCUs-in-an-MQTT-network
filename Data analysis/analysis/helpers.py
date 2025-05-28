@@ -307,7 +307,8 @@ def plot_bar_results(means, stds, metric, scenarios=12):
 
     # Plot each method
     for i in range(len(encryption_methods)):
-        label = "Masked ASCON" if encryption_methods[i] == "masked_ASCON" else encryption_methods[i]
+        label = "Masked ASCON" if encryption_methods[
+            i] == "masked_ASCON" else encryption_methods[i]
 
         ax.bar(x + i * width,
                means[i],
@@ -318,9 +319,13 @@ def plot_bar_results(means, stds, metric, scenarios=12):
 
     # Labels and ticks
     ax.set_xlabel("Scenario")
-    if metric == "percent_of_RTT":
+    if metric in [
+            "percent_of_RTT", "DS_encryption_time_of_RTT",
+            "S_encryption_time_of_RTT"
+    ]:
         ax.set_ylabel("% of RTT")
-        ax.set_ylim(90, 100)
+        if metric == "percent_of_RTT":
+            ax.set_ylim(90, 100)
     elif metric == "encryption_time_of_RTT":
         ax.set_ylabel("% of RTT")
     else:
